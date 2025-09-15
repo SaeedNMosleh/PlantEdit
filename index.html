@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scenario-Test Diagram Editor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Scenario-Test Diagram Editor</h1>
+    <div class="container">
+        <div class="input-section">
+            <h2>PlantUML Input</h2>
+            <textarea id="plantuml-input" rows="10" placeholder="Paste your PlantUML syntax here..."></textarea>
+            <button id="generate-btn">Generate Diagram</button>
+        </div>
+        <div class="editor-section">
+            <h2>SVG Editor</h2>
+            <div id="svg-container"></div>
+            <div class="controls">
+                <button id="export-btn">Export SVG</button>
+                <button id="toggle-edit-btn">Toggle Edit Mode</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

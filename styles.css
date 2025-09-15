@@ -1,0 +1,71 @@
+/* Edit mode affordances */
+svg g.editable rect {
+    stroke-dasharray: 4 2 !important;
+}
+
+svg g.editable {
+    cursor: move;
+}
+
+#svg-container {
+    user-select: none;
+}
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f4f4;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+}
+
+.container {
+    display: flex;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.input-section, .editor-section {
+    flex: 1;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 5px;
+}
+
+button:hover {
+    background: #0056b3;
+}
+
+#svg-container {
+    border: 1px solid #ccc;
+    min-height: 400px;
+    background: white;
+    position: relative;
+}
+
+.controls {
+    margin-top: 10px;
+}
