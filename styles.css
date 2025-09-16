@@ -7,6 +7,13 @@ svg g.editable {
     cursor: move;
 }
 
+svg g.selected rect {
+    stroke: #007bff !important;
+    stroke-width: 2px !important;
+    stroke-dasharray: none !important;
+    filter: drop-shadow(0 0 4px rgba(0, 123, 255, 0.3));
+}
+
 #svg-container {
     user-select: none;
 }
@@ -20,52 +27,310 @@ body {
 h1 {
     text-align: center;
     color: #333;
+    margin-bottom: 20px;
+    font-size: 2rem;
+    font-weight: 300;
 }
 
-.container {
+/* New simplified layout structure */
+.main-container {
     display: flex;
     gap: 20px;
-    max-width: 1200px;
+    max-width: 1600px;
     margin: 0 auto;
+    height: calc(100vh - 100px);
 }
 
-.input-section, .editor-section {
-    flex: 1;
+.input-panel {
+    width: 350px;
     background: white;
-    padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
+
+.editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* Toolbar styling */
+.toolbar {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: #f8f9fa;
+    flex-wrap: wrap;
+}
+
+.toolbar-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.toolbar-status {
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* Input panel styling */
+.panel-header {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+.collapse-btn {
+    background: none !important;
+    border: none !important;
+    color: #6c757d !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+    padding: 0 !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.collapse-btn:hover {
+    background: #e9ecef !important;
+    color: #495057 !important;
+}
+
+.panel-content {
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+.panel-content.collapsed {
+    display: none;
+}
+
+/* Input area styling */
 
 textarea {
     width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-family: monospace;
+    flex: 1;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s ease;
 }
 
+textarea:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+#generate-btn {
+    margin-top: 15px;
+    width: 100%;
+}
+
+/* Full canvas SVG container */
+#svg-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background:
+        radial-gradient(circle, #e0e0e0 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-attachment: local;
+    min-height: 600px;
+}
+
+#svg-container.edit-mode {
+    background:
+        radial-gradient(circle, #b0b0b0 1px, transparent 1px),
+        #f0f5ff;
+    background-size: 15px 15px;
+    background-attachment: local;
+    cursor: grab;
+}
+
+#svg-container.edit-mode:active {
+    cursor: grabbing;
+}
+
+#svg-container svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    min-width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* Enhanced button styling */
 button {
     background: #007bff;
     color: white;
     border: none;
-    padding: 10px 15px;
-    border-radius: 4px;
+    padding: 10px 16px;
+    border-radius: 6px;
     cursor: pointer;
-    margin: 5px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.1);
+    white-space: nowrap;
 }
 
 button:hover {
     background: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,123,255,0.2);
 }
 
-#svg-container {
-    border: 1px solid #ccc;
-    min-height: 400px;
-    background: white;
-    position: relative;
+button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,123,255,0.1);
 }
 
-.controls {
-    margin-top: 10px;
+button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#export-png-btn {
+    background: #28a745;
+}
+
+#export-png-btn:hover {
+    background: #218838;
+}
+
+#toggle-edit-btn {
+    background: #ffc107;
+    color: #212529;
+}
+
+#toggle-edit-btn:hover {
+    background: #e0a800;
+}
+
+#auto-layout-btn {
+    background: #6f42c1;
+    color: white;
+}
+
+#auto-layout-btn:hover {
+    background: #5a359a;
+}
+
+
+/* Loading states */
+.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Enhanced annotation styling */
+svg foreignObject div[contenteditable] {
+    outline: none !important;
+    transition: all 0.2s ease;
+}
+
+svg foreignObject div[contenteditable]:focus {
+    border-color: #007bff !important;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.25) !important;
+}
+
+/* Responsive design improvements */
+@media (max-width: 1024px) {
+    .main-container {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .input-panel {
+        width: 100%;
+        max-height: 300px;
+    }
+
+    .editor-area {
+        min-height: 500px;
+    }
+
+    .toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .toolbar-status {
+        margin-left: 0;
+        order: -1;
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-container {
+        margin: 0 10px;
+        gap: 10px;
+    }
+
+    body {
+        padding: 10px;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+    }
+
+    .toolbar {
+        padding: 10px;
+    }
+
+    .toolbar-group {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    button {
+        font-size: 12px;
+        padding: 8px 12px;
+    }
 }

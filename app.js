@@ -1,416 +1,604 @@
-// Main application script for Scenario-Test Diagram Editor
+// PlantEdit - Simple SVG editor with real-time auto-routing
 
-const plantumlInput = document.getElementById('plantuml-input');
-const generateBtn = document.getElementById('generate-btn');
-const svgContainer = document.getElementById('svg-container');
-const exportBtn = document.getElementById('export-btn');
-const toggleEditBtn = document.getElementById('toggle-edit-btn');
+class PlantEdit {
+    constructor() {
+        this.plantumlInput = document.getElementById('plantuml-input');
+        this.generateBtn = document.getElementById('generate-btn');
+        this.svgContainer = document.getElementById('svg-container');
+        this.exportBtn = document.getElementById('export-btn');
+        this.exportPngBtn = document.getElementById('export-png-btn');
+        this.toggleEditBtn = document.getElementById('toggle-edit-btn');
+        this.zoomFitBtn = document.getElementById('zoom-fit-btn');
+        this.zoomResetBtn = document.getElementById('zoom-reset-btn');
+        this.statusText = document.getElementById('status-text');
 
-let isEditMode = false;
-let svgDoc = null;
-let nodes = [];
-let edges = [];
-let draggedNode = null;
-let offsetX = 0;
-let offsetY = 0;
-let startTx = 0;
-let startTy = 0;
-let dragStartSVG = null;
+        this.isEditMode = false;
+        this.svgElement = null;
+        this.nodes = [];
+        this.edges = [];
+        this.selectedNode = null;
 
-// Function to encode PlantUML text for server
-function encodePlantUML(text) {
-    const zlibData = pako.deflateRaw(text, { level: 9 });
-    let r = "";
-    for (let i = 0; i < zlibData.length; i += 3) {
-        if (i + 2 === zlibData.length) {
-            r += append3bytes(zlibData[i], zlibData[i + 1], 0);
-        } else if (i + 1 === zlibData.length) {
-            r += append3bytes(zlibData[i], 0, 0);
-        } else {
-            r += append3bytes(zlibData[i], zlibData[i + 1], zlibData[i + 2]);
+        // D3 behaviors
+        this.zoomBehavior = null;
+        this.dragBehavior = null;
+
+        this.initializeEventListeners();
+        this.initializeCollapsiblePanels();
+    }
+
+    initializeEventListeners() {
+        this.generateBtn.addEventListener('click', () => this.handleGenerate());
+        this.exportBtn.addEventListener('click', () => this.handleExportSVG());
+        this.exportPngBtn?.addEventListener('click', () => this.handleExportPNG());
+        this.toggleEditBtn.addEventListener('click', () => this.handleToggleEdit());
+        this.zoomFitBtn?.addEventListener('click', () => this.handleZoomFit());
+        this.zoomResetBtn?.addEventListener('click', () => this.handleZoomReset());
+    }
+
+    initializeCollapsiblePanels() {
+        const collapseButtons = document.querySelectorAll('.collapse-btn');
+        collapseButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = document.getElementById(btn.dataset.target);
+                if (target) {
+                    target.classList.toggle('collapsed');
+                    btn.textContent = target.classList.contains('collapsed') ? '+' : '−';
+                }
+            });
+        });
+    }
+
+    async handleGenerate() {
+        const plantumlText = this.plantumlInput.value.trim();
+        if (!plantumlText) {
+            alert('Please enter PlantUML syntax.');
+            return;
+        }
+
+        try {
+            this.showLoading(true);
+            this.updateStatus('Generating diagram...');
+
+            const svgText = await window.PlantUMLEncoder.generateSVG(plantumlText);
+            console.log('Generated SVG text:', svgText);
+            if (svgText) {
+                this.displaySVG(svgText);
+                this.updateStatus('Diagram generated successfully');
+            }
+        } catch (error) {
+            console.error('Error generating diagram:', error);
+            alert('Error generating diagram. Please check your PlantUML syntax.');
+            this.updateStatus('Error generating diagram');
+        } finally {
+            this.showLoading(false);
         }
     }
-    return r;
-}
 
-function append3bytes(b1, b2, b3) {
-    const c1 = b1 >> 2;
-    const c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
-    const c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
-    const c4 = b3 & 0x3F;
-    return encode6bit(c1) + encode6bit(c2) + encode6bit(c3) + encode6bit(c4);
-}
+    displaySVG(svgText) {
+        console.log('Displaying SVG, text length:', svgText.length);
+        // Clear container and insert SVG
+        this.svgContainer.innerHTML = svgText;
+        this.svgElement = this.svgContainer.querySelector('svg');
+        console.log('SVG element found:', !!this.svgElement);
 
-function encode6bit(b) {
-    if (b < 10) return String.fromCharCode(48 + b);
-    b -= 10;
-    if (b < 26) return String.fromCharCode(65 + b);
-    b -= 26;
-    if (b < 26) return String.fromCharCode(97 + b);
-    b -= 26;
-    return b === 0 ? '-' : '_';
-}
+        if (this.svgElement) {
+            // Setup full canvas viewport
+            this.setupFullCanvasViewport();
 
-// Function to fetch SVG from PlantUML server
-async function generateSVG(plantumlText) {
-    const encoded = encodePlantUML(plantumlText);
-    const url = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Failed to generate SVG');
+            // Parse nodes and edges
+            const { nodes, edges } = window.DiagramParser.parseSVG(this.svgElement);
+            this.nodes = nodes;
+            this.edges = edges;
+
+            console.log(`Loaded ${this.nodes.length} nodes and ${this.edges.length} edges`);
+            console.log('Nodes:', this.nodes.map(n => ({ id: n.id, element: n.element.tagName })));
+            console.log('Edges:', this.edges.map(e => ({ source: e.source?.id, target: e.target?.id, element: e.element.tagName })));
+
+            // Skip auto-layout initially to preserve original diagram appearance
+            // this.applyAutoLayout();
+
+            // Initialize D3 zoom and pan
+            this.initializeZoomPan();
+
+            // Initialize selection and dragging if in edit mode
+            if (this.isEditMode) {
+                this.enableEditMode();
+            }
+        } else {
+            console.error('No SVG element found in container');
         }
-        const svgText = await response.text();
-        return svgText;
-    } catch (error) {
-        console.error('Error generating SVG:', error);
-        alert('Error generating diagram. Please check your PlantUML syntax.');
+    }
+
+    setupFullCanvasViewport() {
+        // Minimal changes - just make it fit the container properly
+        // Don't modify viewBox or other attributes that could deform the diagram
+        this.svgElement.style.width = '100%';
+        this.svgElement.style.height = 'auto';
+        this.svgElement.style.maxWidth = '100%';
+    }
+
+    initializeZoomPan() {
+        if (!this.svgElement) return;
+
+        // Create a main group for all content
+        const existingContent = Array.from(this.svgElement.children);
+        const mainGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        mainGroup.setAttribute('class', 'main-content-group');
+
+        // Move all existing content into the main group
+        existingContent.forEach(child => {
+            mainGroup.appendChild(child);
+        });
+        this.svgElement.appendChild(mainGroup);
+
+        // Create zoom behavior that only affects the main group
+        this.zoomBehavior = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on('zoom', (event) => {
+                // Apply zoom transform only to the main content group
+                d3.select(mainGroup)
+                    .attr('transform', event.transform);
+            });
+
+        // Apply zoom to SVG
+        d3.select(this.svgElement).call(this.zoomBehavior);
+
+        // Disable double-click zoom
+        d3.select(this.svgElement).on('dblclick.zoom', null);
+
+        // Reset to normal zoom level
+        this.resetZoomToNormal();
+    }
+
+    initializeDragBehavior() {
+        if (!this.svgElement) return;
+
+        this.dragBehavior = d3.drag()
+            .on('start', (event, d) => {
+                // Prevent zoom during drag
+                event.sourceEvent.stopPropagation();
+
+                // Find the node being dragged
+                const nodeElement = event.sourceEvent.target.closest('g');
+                const node = this.nodes.find(n => n.element === nodeElement);
+
+                if (node) {
+                    // Select the node
+                    this.selectNode(node);
+                }
+            })
+            .on('drag', (event, d) => {
+                const nodeElement = event.sourceEvent.target.closest('g');
+                const node = this.nodes.find(n => n.element === nodeElement);
+
+                if (node) {
+                    // Convert screen coordinates to SVG coordinates
+                    const mainGroup = this.svgElement.querySelector('.main-content-group');
+                    const svgPoint = this.screenToSVGPoint(event.x, event.y);
+                    const lastSvgPoint = this.screenToSVGPoint(event.x - event.dx, event.y - event.dy);
+
+                    const dx = svgPoint.x - lastSvgPoint.x;
+                    const dy = svgPoint.y - lastSvgPoint.y;
+
+                    // Update node position
+                    node.tx = (node.tx || 0) + dx;
+                    node.ty = (node.ty || 0) + dy;
+
+                    // Apply transform
+                    const baseTransform = node.baseTransform || '';
+                    const newTransform = `${baseTransform} translate(${node.tx}, ${node.ty})`.trim();
+                    node.element.setAttribute('transform', newTransform);
+
+                    // Real-time edge routing
+                    this.updateConnectedEdges(node);
+                }
+            })
+            .on('end', (event, d) => {
+                // Final edge update
+                this.updateAllEdges();
+            });
+    }
+
+    updateConnectedEdges(movedNode) {
+        console.log('Updating connected edges for node:', movedNode.id);
+        console.log('All edges:', this.edges.map(e => ({ source: e.source?.id, target: e.target?.id })));
+        // Find edges connected to this node
+        const connectedEdges = this.edges.filter(edge =>
+            edge.source === movedNode || edge.target === movedNode
+        );
+        console.log('Found connected edges:', connectedEdges.length);
+
+        // Update each connected edge using smart routing
+        connectedEdges.forEach(edge => {
+            if (edge.source && edge.target) {
+                console.log('Recalculating path for edge between', edge.source.id, 'and', edge.target.id);
+                this.calculateSmartEdgePath(edge);
+            } else {
+                console.warn('Edge missing source or target:', edge);
+            }
+        });
+    }
+
+    calculateSmartEdgePath(edge) {
+        const sourceBox = this.getNodeBoundingBox(edge.source);
+        const targetBox = this.getNodeBoundingBox(edge.target);
+
+        if (sourceBox && targetBox) {
+            // Calculate connection points
+            const connectionPoints = this.getOptimalConnectionPoints(sourceBox, targetBox);
+
+            // Use orthogonal routing
+            const path = this.generateOrthogonalPath(
+                connectionPoints.source.x, connectionPoints.source.y,
+                connectionPoints.target.x, connectionPoints.target.y
+            );
+
+            // Update the edge path
+            edge.element.setAttribute('d', path);
+        }
+    }
+
+    getNodeBoundingBox(node) {
+        try {
+            const rect = node.element.querySelector('rect');
+            if (rect) {
+                const bbox = rect.getBBox();
+                const transform = node.element.getAttribute('transform') || '';
+
+                // Parse translate values
+                let tx = node.tx || 0;
+                let ty = node.ty || 0;
+
+                return {
+                    x: bbox.x + tx,
+                    y: bbox.y + ty,
+                    width: bbox.width,
+                    height: bbox.height,
+                    centerX: bbox.x + tx + bbox.width / 2,
+                    centerY: bbox.y + ty + bbox.height / 2
+                };
+            }
+        } catch (e) {
+            console.warn('Could not get bounding box for node:', e);
+        }
         return null;
     }
-}
 
-// Pointer conversion helpers
-function svgPointFromEvent(e) {
-    const pt = svgDoc.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
-    const ctm = svgDoc.getScreenCTM();
-    if (!ctm) return { x: 0, y: 0 };
-    const p = pt.matrixTransform(ctm.inverse());
-    return { x: p.x, y: p.y };
-}
+    getOptimalConnectionPoints(sourceBox, targetBox) {
+        const dx = targetBox.centerX - sourceBox.centerX;
+        const dy = targetBox.centerY - sourceBox.centerY;
 
-function screenToSVGPointXY(x, y) {
-    const pt = svgDoc.createSVGPoint();
-    pt.x = x; pt.y = y;
-    const ctm = svgDoc.getScreenCTM();
-    if (!ctm) return { x: 0, y: 0 };
-    const p = pt.matrixTransform(ctm.inverse());
-    return { x: p.x, y: p.y };
-}
+        let sourcePoint, targetPoint;
 
-function nodeBoxInSVG(el) {
-    const r = el.getBoundingClientRect();
-    const p1 = screenToSVGPointXY(r.left, r.top);
-    const p2 = screenToSVGPointXY(r.right, r.bottom);
-    const left = Math.min(p1.x, p2.x);
-    const right = Math.max(p1.x, p2.x);
-    const top = Math.min(p1.y, p2.y);
-    const bottom = Math.max(p1.y, p2.y);
-    const width = right - left;
-    const height = bottom - top;
-    return {
-        left, right, top, bottom, width, height,
-        cx: left + width / 2,
-        cy: top + height / 2
-    };
-}
-
-// Function to parse SVG elements
-function parseSVG() {
-    nodes = [];
-    edges = [];
-
-    // Build nodes from rects grouped by nearest <g>
-    const seen = new Set();
-    const rects = svgDoc.querySelectorAll('rect');
-    rects.forEach(rect => {
-        const group = rect.closest('g') || rect;
-        if (seen.has(group)) return;
-        seen.add(group);
-
-        const titleEl = group.querySelector('title');
-        const id =
-            (titleEl && titleEl.textContent && titleEl.textContent.trim()) ||
-            group.id ||
-            rect.id ||
-            `node_${nodes.length}`;
-
-        const baseTransform = group.getAttribute('transform') || '';
-        nodes.push({
-            element: group,
-            id,
-            baseTransform,
-            tx: 0,
-            ty: 0
-        });
-    });
-
-    // Build edges from groups that contain a title like "a --> b"
-    const gs = svgDoc.querySelectorAll('g');
-    gs.forEach(g => {
-        const titleEl = g.querySelector('title');
-        const pathEl = g.querySelector('path');
-        if (!pathEl) return;
-        let src = null, tgt = null;
-        if (titleEl && /-->\s*/.test(titleEl.textContent)) {
-            const m = titleEl.textContent.match(/([\w-]+)\s*-->\s*([\w-]+)/);
-            if (m) {
-                const sId = m[1];
-                const tId = m[2];
-                src = nodes.find(n => n.id.includes(sId)) || null;
-                tgt = nodes.find(n => n.id.includes(tId)) || null;
-            }
-        }
-        edges.push({ element: pathEl, source: src, target: tgt });
-    });
-
-    // Fallback: any path with marker-end considered an edge if none found
-    if (edges.length === 0) {
-        svgDoc.querySelectorAll('path[marker-end]').forEach(p => {
-            edges.push({ element: p, source: null, target: null });
-        });
-    }
-}
-
-// Function to calculate orthogonal path
-function calculateOrthogonalPath(sourceX, sourceY, targetX, targetY) {
-    if (Math.abs(targetX - sourceX) >= Math.abs(targetY - sourceY)) {
-        const midX = (sourceX + targetX) / 2;
-        return `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
-    } else {
-        const midY = (sourceY + targetY) / 2;
-        return `M ${sourceX} ${sourceY} L ${sourceX} ${midY} L ${targetX} ${midY} L ${targetX} ${targetY}`;
-    }
-}
-
-// Function to update edge paths
-function updateEdges() {
-    if (!svgDoc) return;
-    const svgCTM = svgDoc.getScreenCTM();
-    if (!svgCTM) return;
-
-    // Helper: convert screen pixel to SVG coords
-    function screenToSVGPoint(x, y) {
-        const pt = svgDoc.createSVGPoint();
-        pt.x = x; pt.y = y;
-        const res = pt.matrixTransform(svgCTM.inverse());
-        return { x: res.x, y: res.y };
-    }
-
-    // Helper: get node box in SVG coordinates from its screen box
-    function getNodeBoxSVG(el) {
-        const r = el.getBoundingClientRect();
-        const p1 = screenToSVGPoint(r.left, r.top);
-        const p2 = screenToSVGPoint(r.right, r.bottom);
-        const left = Math.min(p1.x, p2.x);
-        const right = Math.max(p1.x, p2.x);
-        const top = Math.min(p1.y, p2.y);
-        const bottom = Math.max(p1.y, p2.y);
-        const width = right - left;
-        const height = bottom - top;
-        return {
-            left, right, top, bottom, width, height,
-            cx: left + width / 2,
-            cy: top + height / 2
-        };
-    }
-
-    function nearestNodeToPoint(pt) {
-        let best = null;
-        let bestD = Number.POSITIVE_INFINITY;
-        nodes.forEach(n => {
-            const b = getNodeBoxSVG(n.element);
-            const dx = b.cx - pt.x;
-            const dy = b.cy - pt.y;
-            const d2 = dx*dx + dy*dy;
-            if (d2 < bestD) {
-                bestD = d2;
-                best = n;
-            }
-        });
-        return best;
-    }
-
-    function chooseConnectionPoints(boxA, boxB) {
-        const leftA = { x: boxA.left, y: boxA.cy };
-        const rightA = { x: boxA.right, y: boxA.cy };
-        const topA = { x: boxA.cx, y: boxA.top };
-        const bottomA = { x: boxA.cx, y: boxA.bottom };
-
-        const leftB = { x: boxB.left, y: boxB.cy };
-        const rightB = { x: boxB.right, y: boxB.cy };
-        const topB = { x: boxB.cx, y: boxB.top };
-        const bottomB = { x: boxB.cx, y: boxB.bottom };
-
-        const dx = boxB.cx - boxA.cx;
-        const dy = boxB.cy - boxA.cy;
-
-        if (Math.abs(dx) >= Math.abs(dy)) {
-            // Horizontal preference
-            if (dx >= 0) {
-                return { s: rightA, t: leftB };
+        // Determine connection direction
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // Horizontal connection
+            if (dx > 0) {
+                sourcePoint = { x: sourceBox.x + sourceBox.width, y: sourceBox.centerY };
+                targetPoint = { x: targetBox.x, y: targetBox.centerY };
             } else {
-                return { s: leftA, t: rightB };
+                sourcePoint = { x: sourceBox.x, y: sourceBox.centerY };
+                targetPoint = { x: targetBox.x + targetBox.width, y: targetBox.centerY };
             }
         } else {
-            // Vertical preference
-            if (dy >= 0) {
-                return { s: bottomA, t: topB };
+            // Vertical connection
+            if (dy > 0) {
+                sourcePoint = { x: sourceBox.centerX, y: sourceBox.y + sourceBox.height };
+                targetPoint = { x: targetBox.centerX, y: targetBox.y };
             } else {
-                return { s: topA, t: bottomB };
+                sourcePoint = { x: sourceBox.centerX, y: sourceBox.y };
+                targetPoint = { x: targetBox.centerX, y: targetBox.y + targetBox.height };
             }
         }
+
+        return { source: sourcePoint, target: targetPoint };
     }
 
-    edges.forEach(edge => {
-        let source = edge.source || null;
-        let target = edge.target || null;
+    generateOrthogonalPath(sourceX, sourceY, targetX, targetY) {
+        const dx = targetX - sourceX;
+        const dy = targetY - sourceY;
 
-        // If not resolved, infer from current path endpoints
-        if (!source || !target) {
-            const path = edge.element;
-            const total = path.getTotalLength ? path.getTotalLength() : 0;
-            const pStart = total ? path.getPointAtLength(0.1) : { x: 0, y: 0 };
-            const pEnd = total ? path.getPointAtLength(Math.max(0, total - 0.1)) : { x: 0, y: 0 };
-            source = source || nearestNodeToPoint(pStart);
-            target = target || nearestNodeToPoint(pEnd);
-            edge.source = source;
-            edge.target = target;
-        }
-
-        if (source && target) {
-            const boxA = getNodeBoxSVG(source.element);
-            const boxB = getNodeBoxSVG(target.element);
-            const pts = chooseConnectionPoints(boxA, boxB);
-            const newPath = calculateOrthogonalPath(pts.s.x, pts.s.y, pts.t.x, pts.t.y);
-            edge.element.setAttribute('d', newPath);
-        }
-    });
-}
-
-// Function to display SVG in container
-function displaySVG(svgText) {
-    svgContainer.innerHTML = svgText;
-    svgDoc = svgContainer.querySelector('svg');
-    if (svgDoc) {
-        // Make SVG responsive
-        svgDoc.setAttribute('width', '100%');
-        svgDoc.setAttribute('height', '100%');
-        parseSVG();
-        if (isEditMode) {
-            enableDragging();
+        // Create orthogonal path with smart routing
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            // Horizontal preference
+            const midX = sourceX + dx / 2;
+            return `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+        } else {
+            // Vertical preference
+            const midY = sourceY + dy / 2;
+            return `M ${sourceX} ${sourceY} L ${sourceX} ${midY} L ${targetX} ${midY} L ${targetX} ${targetY}`;
         }
     }
+
+    updateAllEdges() {
+        if (!this.svgElement) return;
+
+        this.edges.forEach(edge => {
+            if (edge.source && edge.target) {
+                this.calculateSmartEdgePath(edge);
+            }
+        });
+    }
+
+    applyAutoLayout() {
+        if (!window.dagre || this.nodes.length === 0) return;
+
+        // Create a new directed graph
+        const g = new dagre.graphlib.Graph();
+        g.setGraph({
+            rankdir: 'TB',
+            nodesep: 50,
+            ranksep: 80,
+            marginx: 20,
+            marginy: 20
+        });
+        g.setDefaultEdgeLabel(() => ({}));
+
+        // Add nodes to the graph
+        this.nodes.forEach(node => {
+            const bbox = this.getNodeBoundingBox(node);
+            if (bbox) {
+                g.setNode(node.id, {
+                    width: bbox.width,
+                    height: bbox.height,
+                    node: node
+                });
+            }
+        });
+
+        // Add edges to the graph
+        this.edges.forEach(edge => {
+            if (edge.source && edge.target) {
+                g.setEdge(edge.source.id, edge.target.id, { edge: edge });
+            }
+        });
+
+        // Run the layout algorithm
+        dagre.layout(g);
+
+        // Apply the calculated positions
+        g.nodes().forEach(nodeId => {
+            const nodeData = g.node(nodeId);
+            const node = nodeData.node;
+
+            // Calculate offset from original position
+            const originalBbox = this.getNodeBoundingBox(node);
+            if (originalBbox) {
+                node.tx = nodeData.x - originalBbox.x - originalBbox.width / 2;
+                node.ty = nodeData.y - originalBbox.y - originalBbox.height / 2;
+
+                // Apply the transform
+                const baseTransform = node.baseTransform || '';
+                const newTransform = `${baseTransform} translate(${node.tx}, ${node.ty})`.trim();
+                node.element.setAttribute('transform', newTransform);
+            }
+        });
+
+        // Update all edges after layout
+        this.updateAllEdges();
+
+        console.log('Auto-layout applied using Dagre');
+    }
+
+    screenToSVGPoint(x, y) {
+        const pt = this.svgElement.createSVGPoint();
+        pt.x = x;
+        pt.y = y;
+        const svgCTM = this.svgElement.getScreenCTM();
+        if (!svgCTM) return { x: 0, y: 0 };
+        const transformed = pt.matrixTransform(svgCTM.inverse());
+        return { x: transformed.x, y: transformed.y };
+    }
+
+    selectNode(node) {
+        // Clear previous selection
+        if (this.selectedNode) {
+            this.selectedNode.element.classList.remove('selected');
+        }
+
+        // Select new node
+        this.selectedNode = node;
+        if (node) {
+            node.element.classList.add('selected');
+        }
+    }
+
+    enableEditMode() {
+        console.log('Enabling edit mode, nodes count:', this.nodes.length);
+        if (!this.svgElement) {
+            console.error('No SVG element for edit mode');
+            return;
+        }
+
+        this.initializeDragBehavior();
+        console.log('Drag behavior initialized:', !!this.dragBehavior);
+
+        // Make nodes draggable and selectable
+        this.nodes.forEach(node => {
+            const nodeSelection = d3.select(node.element);
+            console.log('Making node draggable:', node.id, node.element.tagName);
+
+            // Add visual feedback
+            node.element.classList.add('editable');
+
+            // Apply drag behavior
+            nodeSelection.call(this.dragBehavior);
+
+            // Add click selection
+            nodeSelection.on('click', (event) => {
+                event.stopPropagation();
+                this.selectNode(node);
+            });
+        });
+
+        // Clear selection when clicking empty space
+        d3.select(this.svgElement).on('click', () => {
+            this.selectNode(null);
+        });
+
+        this.svgContainer.classList.add('edit-mode');
+
+        // Reset zoom to normal when entering edit mode
+        this.resetZoomToNormal();
+
+        this.updateStatus('Edit mode enabled - drag nodes, auto-layout available');
+    }
+
+    disableEditMode() {
+        if (!this.svgElement) return;
+
+        // Remove edit behaviors
+        this.nodes.forEach(node => {
+            const nodeSelection = d3.select(node.element);
+            node.element.classList.remove('editable', 'selected');
+            nodeSelection.on('.drag', null);
+            nodeSelection.on('click', null);
+        });
+
+        d3.select(this.svgElement).on('click', null);
+        this.selectedNode = null;
+        this.svgContainer.classList.remove('edit-mode');
+        this.updateStatus('Edit mode disabled');
+    }
+
+    handleToggleEdit() {
+        this.isEditMode = !this.isEditMode;
+        this.toggleEditBtn.textContent = this.isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode';
+
+        if (this.isEditMode) {
+            this.enableEditMode();
+        } else {
+            this.disableEditMode();
+        }
+    }
+
+    handleZoomFit() {
+        if (!this.svgElement || this.nodes.length === 0) return;
+
+        // Calculate bounds of all nodes
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        this.nodes.forEach(node => {
+            const bbox = this.getNodeBoundingBox(node);
+            if (bbox) {
+                minX = Math.min(minX, bbox.x);
+                minY = Math.min(minY, bbox.y);
+                maxX = Math.max(maxX, bbox.x + bbox.width);
+                maxY = Math.max(maxY, bbox.y + bbox.height);
+            }
+        });
+
+        if (minX !== Infinity) {
+            const padding = 50;
+            const contentWidth = maxX - minX;
+            const contentHeight = maxY - minY;
+
+            // Calculate scale to fit content in viewport
+            const containerRect = this.svgContainer.getBoundingClientRect();
+            const scaleX = (containerRect.width - 2 * padding) / contentWidth;
+            const scaleY = (containerRect.height - 2 * padding) / contentHeight;
+            const scale = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
+
+            // Center the content
+            const centerX = (containerRect.width / 2) - ((minX + maxX) / 2) * scale;
+            const centerY = (containerRect.height / 2) - ((minY + maxY) / 2) * scale;
+
+            // Apply transform to main content group
+            const mainGroup = this.svgElement.querySelector('.main-content-group');
+            if (mainGroup) {
+                d3.select(this.svgElement)
+                    .transition()
+                    .duration(750)
+                    .call(this.zoomBehavior.transform, d3.zoomIdentity.translate(centerX, centerY).scale(scale));
+            }
+
+            this.updateStatus('Zoomed to fit content');
+        }
+    }
+
+    handleZoomReset() {
+        this.resetZoomToNormal();
+    }
+
+    resetZoomToNormal() {
+        if (!this.svgElement) return;
+
+        d3.select(this.svgElement)
+            .transition()
+            .duration(500)
+            .call(this.zoomBehavior.transform, d3.zoomIdentity);
+
+        this.updateStatus('Zoom reset to normal');
+    }
+
+    async handleExportSVG() {
+        if (!this.svgElement) {
+            alert('No diagram to export.');
+            return;
+        }
+
+        const svgData = new XMLSerializer().serializeToString(this.svgElement);
+        const blob = new Blob([svgData], { type: 'image/svg+xml' });
+        this.downloadBlob(blob, 'diagram.svg');
+        this.updateStatus('SVG exported');
+    }
+
+    async handleExportPNG() {
+        if (!this.plantumlInput.value.trim()) {
+            alert('No diagram to export.');
+            return;
+        }
+
+        try {
+            this.showLoading(true);
+            this.updateStatus('Generating PNG...');
+
+            const pngBlob = await window.PlantUMLEncoder.generatePNG(this.plantumlInput.value.trim());
+            if (pngBlob) {
+                this.downloadBlob(pngBlob, 'diagram.png');
+                this.updateStatus('PNG exported');
+            }
+        } catch (error) {
+            console.error('Error exporting PNG:', error);
+            alert('Error exporting PNG.');
+            this.updateStatus('Error exporting PNG');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    showLoading(show) {
+        if (show) {
+            this.generateBtn.disabled = true;
+            this.generateBtn.textContent = 'Generating...';
+        } else {
+            this.generateBtn.disabled = false;
+            this.generateBtn.textContent = 'Generate Diagram';
+        }
+    }
+
+    downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    updateStatus(message) {
+        if (this.statusText) {
+            this.statusText.textContent = message;
+            setTimeout(() => {
+                if (this.statusText.textContent === message) {
+                    this.statusText.textContent = 'Ready';
+                }
+            }, 3000);
+        }
+    }
 }
 
-// Event listeners
-generateBtn.addEventListener('click', async () => {
-    const plantumlText = plantumlInput.value.trim();
-    if (!plantumlText) {
-        alert('Please enter PlantUML syntax.');
-        return;
-    }
-    
-    const svgText = await generateSVG(plantumlText);
-    if (svgText) {
-        displaySVG(svgText);
-    }
+// Initialize PlantEdit when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    new PlantEdit();
 });
-
-exportBtn.addEventListener('click', () => {
-    if (!svgDoc) {
-        alert('No diagram to export.');
-        return;
-    }
-    const svgData = new XMLSerializer().serializeToString(svgDoc);
-    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'diagram.svg';
-    a.click();
-    URL.revokeObjectURL(url);
-});
-
-toggleEditBtn.addEventListener('click', () => {
-    isEditMode = !isEditMode;
-    toggleEditBtn.textContent = isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode';
-    if (isEditMode && svgDoc) {
-        enableDragging();
-    } else if (svgDoc) {
-        disableDragging();
-    }
-});
-
-// Annotation functions
-function addAnnotation(node) {
-    const box = nodeBoxInSVG(node.element);
-    const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    foreignObject.setAttribute('x', 4);
-    foreignObject.setAttribute('y', box.height + 4);
-    foreignObject.setAttribute('width', Math.max(80, box.width - 8));
-    foreignObject.setAttribute('height', 50);
-    const div = document.createElement('div');
-    div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-    div.contentEditable = 'true';
-    div.style.width = '100%';
-    div.style.height = '100%';
-    div.style.border = '1px solid #ccc';
-    div.style.fontSize = '12px';
-    div.style.background = 'rgba(255,255,255,0.85)';
-    div.style.boxSizing = 'border-box';
-    div.innerText = 'Add your note here...';
-    foreignObject.appendChild(div);
-    node.element.appendChild(foreignObject);
-    node.annotation = foreignObject; // Moves with group transform
-}
-
-// Dragging functions
-function enableDragging() {
-    nodes.forEach(node => {
-        const el = node.element;
-        if (el.dataset.draggableOn === '1') return;
-        el.dataset.draggableOn = '1';
-        el.classList.add('editable');
-        node._dbl = () => addAnnotation(node);
-        el.addEventListener('mousedown', startDrag, false);
-        el.addEventListener('dblclick', node._dbl, false);
-        el.style.cursor = 'move';
-    });
-}
-
-function disableDragging() {
-    nodes.forEach(node => {
-        const el = node.element;
-        el.classList.remove('editable');
-        el.style.cursor = 'default';
-        el.removeEventListener('mousedown', startDrag, false);
-        if (node._dbl) el.removeEventListener('dblclick', node._dbl, false);
-        delete el.dataset.draggableOn;
-    });
-}
-
-function startDrag(e) {
-    const targetGroup = e.target.closest('g') || e.target;
-    draggedNode = nodes.find(n => n.element === targetGroup);
-    if (!draggedNode) return;
-    dragStartSVG = svgPointFromEvent(e);
-    startTx = draggedNode.tx || 0;
-    startTy = draggedNode.ty || 0;
-    document.addEventListener('mousemove', drag, false);
-    document.addEventListener('mouseup', endDrag, false);
-    e.preventDefault();
-}
-
-function drag(e) {
-    if (!draggedNode) return;
-    const p = svgPointFromEvent(e);
-    const dx = p.x - dragStartSVG.x;
-    const dy = p.y - dragStartSVG.y;
-    const tx = startTx + dx;
-    const ty = startTy + dy;
-    draggedNode.tx = tx;
-    draggedNode.ty = ty;
-    const base = draggedNode.baseTransform || '';
-    draggedNode.element.setAttribute('transform', `${base} translate(${tx}, ${ty})`);
-    updateEdges();
-}
-
-function endDrag() {
-    draggedNode = null;
-    document.removeEventListener('mousemove', drag, false);
-    document.removeEventListener('mouseup', endDrag, false);
-}
-
-// TODO: Add annotations
