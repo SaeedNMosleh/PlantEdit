@@ -1,59 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PlantEdit</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <h1>PlantEdit</h1>
-    <div class="main-container">
-        <div class="input-panel">
-            <div class="panel-header">
-                <h3>PlantUML Input</h3>
-                <button class="collapse-btn" data-target="input-content">−</button>
-            </div>
-            <div class="panel-content" id="input-content">
-                <textarea id="plantuml-input" rows="20" placeholder="Paste your PlantUML syntax here..."></textarea>
-                <button id="generate-btn">Generate Diagram</button>
-            </div>
-        </div>
-
-        <div class="editor-area">
-            <div class="toolbar">
-                <div class="toolbar-group">
-                    <button id="toggle-edit-btn">Enter Edit Mode</button>
-                </div>
-                <div class="toolbar-group">
-                    <button id="export-btn">Export SVG</button>
-                    <button id="export-png-btn">Export PNG</button>
-                </div>
-                <div class="toolbar-group">
-                    <button id="zoom-fit-btn">Fit to View</button>
-                    <button id="zoom-reset-btn">Reset Zoom</button>
-                </div>
-                <div class="toolbar-status">
-                    <span id="status-text">Ready</span>
-                </div>
-            </div>
-            <div id="svg-container"></div>
-        </div>
-    </div>
-    <!-- External Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-
-    <!-- D3.js for SVG manipulation, zoom, drag -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-
-    <!-- Dagre for auto-layout and routing -->
-    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
-
-    <!-- PlantEdit Modules -->
-    <script src="plantuml-encoder.js"></script>
-    <script src="diagram-parser.js"></script>
-
-    <!-- Main Application -->
-    <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlantEdit - Visual PlantUML Editor</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
