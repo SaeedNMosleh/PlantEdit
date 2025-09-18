@@ -1,135 +1,63 @@
 /**
- * Main App component - PlantEdit with TypeScript and modern React architecture
+ * Simplified PlantEdit App - Direct SVG manipulation approach
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DiagramCanvas } from '@/components/DiagramCanvas';
-import { PlantUMLInput } from '@/components/PlantUMLInput';
-import { Toolbar } from '@/components/Toolbar';
-import { StatusBar } from '@/components/StatusBar';
-import { usePlantUMLIntegration } from '@/hooks/useDiagramInteractions';
-import { Position } from '@/types/geometry';
+import React, { useState } from 'react';
+import { plantUMLClient } from '@/services/SimplePlantUMLClient';
+import { CorrectPlantUMLEditor } from '@/components/CorrectPlantUMLEditor';
 import './App.css';
 
-// Create a client for React Query
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      retry: 1,
-    },
-  },
-});
+const App: React.FC = () => {
+  const [plantumlSource, setPlantumlSource] = useState(`@startuml
+left to right direction
+skinparam linetype ortho
+rectangle "Login\\nScenario" as login
+rectangle "Dashboard\\nScenario" as dash
+rectangle "Create Item\\nScenario" as create
+rectangle "Validation\\nTest" as valid
+rectangle "Database\\nTest" as db
+login --> dash
+dash --> create
+create --> valid
+create --> db
+@enduml`);
 
-const AppContent: React.FC = () => {
-  const [isInputPanelCollapsed, setIsInputPanelCollapsed] = useState(false);
-  const [status, setStatus] = useState('Ready');
+  const [svgContent, setSvgContent] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
 
-  // Hooks
-  const { generateFromPlantUML, exportToPNG, exportCurrentDiagramToSVG, exportCurrentDiagramToPNG } = usePlantUMLIntegration();
+  const handleGenerate = async () => {
+    if (!plantumlSource.trim()) return;
 
-
-  // Handle PlantUML generation
-  const handleGenerate = useCallback(async (plantumlSource: string) => {
-    setStatus('Generating diagram...');
-
-    try {
-      const result = await generateFromPlantUML(plantumlSource);
-
-      if (result.success) {
-        setStatus('Diagram generated successfully');
-      } else {
-        setStatus(`Error: ${result.error.message}`);
-        console.error('Generation error:', result.error);
-      }
-    } catch (error) {
-      setStatus('Error generating diagram');
-      console.error('Unexpected error:', error);
-    }
-
-    // Clear status after 3 seconds
-    setTimeout(() => setStatus('Ready'), 3000);
-  }, [generateFromPlantUML]);
-
-  // Handle PNG export (original from PlantUML source)
-  const handleExportPNG = useCallback(async (plantumlSource: string) => {
-    if (!plantumlSource.trim()) {
-      setStatus('No diagram to export');
-      return;
-    }
-
-    setStatus('Generating PNG...');
+    setIsLoading(true);
+    setError('');
 
     try {
-      const result = await exportToPNG(plantumlSource);
-
-      if (result.success) {
-        // Download the blob
-        const url = URL.createObjectURL(result.data);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'diagram.png';
-        a.click();
-        URL.revokeObjectURL(url);
-
-        setStatus('PNG exported successfully');
-      } else {
-        setStatus(`Export error: ${result.error.message}`);
-      }
-    } catch (error) {
-      setStatus('Error exporting PNG');
-      console.error('Export error:', error);
+      const svg = await plantUMLClient.getSVG(plantumlSource);
+      setSvgContent(svg);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate diagram');
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    setTimeout(() => setStatus('Ready'), 3000);
-  }, [exportToPNG]);
+  const handleSVGUpdate = (updatedSVG: string) => {
+    setSvgContent(updatedSVG);
+  };
 
-  // Handle SVG export of current edited diagram
-  const handleExportCurrentSVG = useCallback(() => {
-    setStatus('Exporting SVG...');
+  const handleExportSVG = () => {
+    if (!svgContent) return;
 
-    try {
-      const result = exportCurrentDiagramToSVG();
-
-      if (result.success) {
-        setStatus('SVG exported successfully');
-      } else {
-        setStatus(`Export error: ${result.error.message}`);
-      }
-    } catch (error) {
-      setStatus('Error exporting SVG');
-      console.error('Export error:', error);
-    }
-
-    setTimeout(() => setStatus('Ready'), 3000);
-  }, [exportCurrentDiagramToSVG]);
-
-  // Handle PNG export of current edited diagram
-  const handleExportCurrentPNG = useCallback(async () => {
-    setStatus('Exporting PNG...');
-
-    try {
-      const result = await exportCurrentDiagramToPNG();
-
-      if (result.success) {
-        setStatus('PNG exported successfully');
-      } else {
-        setStatus(`Export error: ${result.error.message}`);
-      }
-    } catch (error) {
-      setStatus('Error exporting PNG');
-      console.error('Export error:', error);
-    }
-
-    setTimeout(() => setStatus('Ready'), 3000);
-  }, [exportCurrentDiagramToPNG]);
-
-  // Handle node movement
-  const handleNodeMove = useCallback((nodeId: string, position: Position) => {
-    // Real-time edge recalculation happens automatically in the EdgeComponent
-    console.log(`Node ${nodeId} moved to:`, position);
-  }, []);
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'diagram.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="app-container flex flex-col h-screen bg-gray-100">
@@ -143,45 +71,112 @@ const AppContent: React.FC = () => {
         {/* Input Panel */}
         <div
           className={`bg-white border-r border-gray-200 transition-all duration-300 ${
-            isInputPanelCollapsed ? 'w-12' : 'w-80'
+            isInputCollapsed ? 'w-12' : 'w-80'
           }`}
         >
-          <PlantUMLInput
-            isCollapsed={isInputPanelCollapsed}
-            onToggleCollapse={() => setIsInputPanelCollapsed(prev => !prev)}
-            onGenerate={handleGenerate}
-          />
+          {isInputCollapsed ? (
+            <div className="h-full flex flex-col items-center py-4">
+              <button
+                onClick={() => setIsInputCollapsed(false)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                title="Expand PlantUML Input"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-sm font-semibold text-gray-900">PlantUML Input</h3>
+                <button
+                  onClick={() => setIsInputCollapsed(true)}
+                  className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                  title="Collapse Panel"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 flex flex-col p-4 space-y-4">
+                {/* Textarea */}
+                <div className="flex-1">
+                  <textarea
+                    value={plantumlSource}
+                    onChange={(e) => setPlantumlSource(e.target.value)}
+                    className="w-full h-full resize-none p-3 text-sm font-mono border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
+                    placeholder="Enter your PlantUML syntax here..."
+                    spellCheck={false}
+                  />
+                </div>
+
+                {/* Generate Button */}
+                <div>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={isLoading || !plantumlSource.trim()}
+                    className={`w-full py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                      isLoading || !plantumlSource.trim()
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500'
+                    }`}
+                  >
+                    {isLoading ? 'Generating...' : 'Generate Diagram'}
+                  </button>
+                </div>
+
+                {error && (
+                  <div className="text-red-600 text-sm p-2 bg-red-50 border border-red-200 rounded">
+                    {error}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Editor Area */}
         <div className="flex-1 flex flex-col">
           {/* Toolbar */}
-          <Toolbar
-            onExportSVG={handleExportCurrentSVG}
-            onExportPNG={handleExportCurrentPNG}
-          />
+          <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center space-x-2">
+            <button
+              onClick={handleExportSVG}
+              disabled={!svgContent}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                svgContent
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              Export SVG
+            </button>
+          </div>
 
           {/* Canvas */}
-          <div className="flex-1">
-            <DiagramCanvas
-              onNodeMove={handleNodeMove}
-            />
+          <div className="flex-1 bg-white relative">
+            {svgContent ? (
+              <CorrectPlantUMLEditor svgContent={svgContent} onSVGUpdate={handleSVGUpdate} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                {isLoading ? 'Generating diagram...' : 'Click "Generate Diagram" to start'}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Status Bar */}
-      <StatusBar status={status} />
+      <div className="bg-white border-t border-gray-200 px-6 py-2">
+        <div className="text-sm text-gray-600">
+          {svgContent ? 'PlantUML editor active - drag entities to rearrange, connections auto-update' : 'Ready'}
+        </div>
+      </div>
     </div>
-  );
-};
-
-// Main App with providers
-const App: React.FC = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AppContent />
-    </QueryClientProvider>
   );
 };
 
