@@ -13,6 +13,7 @@ import * as d3 from 'd3';
 interface CorrectPlantUMLEditorProps {
   svgContent: string;
   onSVGUpdate?: (updatedSVG: string) => void;
+  onZoomChange?: (zoomLevel: number) => void;
 }
 
 type XY = { x: number; y: number };
@@ -38,10 +39,14 @@ type LinkInfo = {
 
 export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
   svgContent,
-  onSVGUpdate
+  onSVGUpdate,
+  onZoomChange
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [, setZoomLevel] = useState(1);
 
   // Caches for fast lookup during drag
   const entityMapRef = useRef<Map<string, EntityBox>>(new Map());
@@ -55,6 +60,10 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
   const movedEntitiesRef = useRef<Set<string>>(new Set());
   const rafIdRef = useRef<number | null>(null);
 
+  // Zoom and pan behavior refs
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const isEntityDragRef = useRef(false);
+
   const initializeEditor = useCallback(() => {
     if (!containerRef.current || !svgContent) return;
 
@@ -63,6 +72,9 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
 
     const svgElement = containerRef.current.querySelector('svg') as SVGSVGElement | null;
     if (!svgElement) return;
+
+    // Store reference for cleanup
+    svgRef.current = svgElement;
 
     // Build caches
     entityMapRef.current = buildEntityMap(svgElement);
@@ -74,16 +86,23 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
       (g) => g.querySelector('rect') && g.querySelector('text')
     );
 
+    // Initialize zoom and pan behavior first
+    const cleanupZoomPan = initializeZoomPan(svgElement);
+
     // Apply D3 drag behavior
     applyDragBehavior(draggableEntities, svgElement);
 
     // Set initial viewBox to encompass all content
     updateViewBoxEnhanced(svgElement);
+
+    // Return cleanup function
+    return cleanupZoomPan;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgContent]);
 
   useEffect(() => {
-    initializeEditor();
+    const cleanup = initializeEditor();
+    return cleanup;
   }, [initializeEditor]);
 
   // Build a map of entities by their PlantUML data-entity attribute
@@ -339,6 +358,80 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
     });
   };
 
+  // Initialize zoom and pan behavior
+  const initializeZoomPan = useCallback((svgElement: SVGSVGElement) => {
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 5])
+      .on('start', function() {
+        if (!isEntityDragRef.current) {
+          setIsPanning(true);
+        }
+      })
+      .on('zoom', function(event) {
+        if (isEntityDragRef.current) return;
+
+        const { k, x, y } = event.transform;
+        setZoomLevel(k);
+
+        // Apply transform to the content group
+        let contentGroup = svgElement.querySelector('g.zoom-content') as SVGGElement;
+        if (!contentGroup) {
+          // Create a zoom content group if it doesn't exist
+          contentGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          contentGroup.classList.add('zoom-content');
+
+          // Move all existing children to the new group
+          const children = Array.from(svgElement.children);
+          children.forEach(child => {
+            if (child !== contentGroup) {
+              contentGroup.appendChild(child);
+            }
+          });
+
+          svgElement.appendChild(contentGroup);
+        }
+
+        contentGroup.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+
+        // Notify parent of zoom change
+        if (onZoomChange) {
+          onZoomChange(k);
+        }
+      })
+      .on('end', function() {
+        setIsPanning(false);
+      })
+      .filter(function(_event) {
+        // Only allow zoom/pan if we're not dragging an entity
+        return !isEntityDragRef.current;
+      });
+
+    zoomBehaviorRef.current = zoom;
+    d3.select(svgElement).call(zoom);
+
+    // Reset to initial view
+    const resetView = () => {
+      d3.select(svgElement)
+        .transition()
+        .duration(500)
+        .call(zoom.transform, d3.zoomIdentity);
+    };
+
+    // Add keyboard shortcut for reset (Ctrl+0)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key === '0') {
+        event.preventDefault();
+        resetView();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onZoomChange]);
+
   /**
    * Apply D3 drag behavior to PlantUML entity groups
    * - Anchors drag to rectangle top-left via pointer offset captured on start
@@ -350,6 +443,7 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
       .drag<SVGGElement, unknown>()
       .on('start', function (event) {
         setIsDragging(true);
+        isEntityDragRef.current = true;
         const group = this as SVGGElement;
         const rect = group.querySelector('rect') as SVGRectElement | null;
         if (!rect) return;
@@ -357,9 +451,14 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
         const rectX = parseFloat(rect.getAttribute('x') || '0');
         const rectY = parseFloat(rect.getAttribute('y') || '0');
 
+        // Account for current zoom/pan transform when calculating offsets
+        const transform = d3.zoomTransform(svgElement);
+        const transformedX = (event.x - transform.x) / transform.k;
+        const transformedY = (event.y - transform.y) / transform.k;
+
         // Anchor pointer offsets relative to rect top-left
-        const dx = event.x - rectX;
-        const dy = event.y - rectY;
+        const dx = transformedX - rectX;
+        const dy = transformedY - rectY;
         dragOffsetRef.current.set(group, { dx, dy });
         lastRectPosRef.current.set(group, { x: rectX, y: rectY });
 
@@ -372,8 +471,13 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
 
         const offset = dragOffsetRef.current.get(group) || { dx: 0, dy: 0 };
 
-        const newX = event.x - offset.dx;
-        const newY = event.y - offset.dy;
+        // Account for current zoom/pan transform
+        const transform = d3.zoomTransform(svgElement);
+        const transformedX = (event.x - transform.x) / transform.k;
+        const transformedY = (event.y - transform.y) / transform.k;
+
+        const newX = transformedX - offset.dx;
+        const newY = transformedY - offset.dy;
 
         const prev = lastRectPosRef.current.get(group) || {
           x: parseFloat(rect.getAttribute('x') || '0'),
@@ -415,6 +519,7 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
       })
       .on('end', function () {
         setIsDragging(false);
+        isEntityDragRef.current = false;
         const group = this as SVGGElement;
         d3.select(group).style('cursor', 'grab');
 
@@ -447,14 +552,10 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
         ref={containerRef}
         className="w-full h-full"
         style={{
-          cursor: isDragging ? 'grabbing' : 'default'
+          cursor: isDragging ? 'grabbing' : isPanning ? 'grabbing' : 'grab'
         }}
       />
 
-      {/* Status indicator */}
-      <div className="absolute top-4 left-4 bg-green-100 text-green-800 px-3 py-1 rounded-md text-sm font-medium">
-        PlantUML Editor - Drag entities to rearrange; orthogonal edges auto-update
-      </div>
     </div>
   );
 };
