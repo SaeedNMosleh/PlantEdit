@@ -1,7 +1,8 @@
 /**
- * Correct PlantUML Editor - Enhanced for orthogonal routing and proper drag
+ * Correct PlantUML Editor - Enhanced with ELKjs orthogonal routing
+ * - Uses ELKjs for sophisticated orthogonal edge routing with obstacle avoidance
  * - Uses D3 for drag with anchored pointer offsets
- * - Recomputes orthogonal (Manhattan) paths live while dragging
+ * - Recomputes orthogonal paths live while dragging using ELK
  * - Reorients arrowheads based on final segment direction
  * - Keeps exact drag positions (no automatic node repositioning)
  * - Dynamically updates viewBox to fit all content (entities + links)
@@ -9,6 +10,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
+import ELK, { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js';
 
 interface CorrectPlantUMLEditorProps {
   svgContent: string;
@@ -64,6 +66,12 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const isEntityDragRef = useRef(false);
 
+  // ELK instance for layout
+  const elkRef = useRef<InstanceType<typeof ELK> | null>(null);
+  if (!elkRef.current) {
+    elkRef.current = new ELK();
+  }
+
   const initializeEditor = useCallback(() => {
     if (!containerRef.current || !svgContent) return;
 
@@ -92,8 +100,11 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
     // Apply D3 drag behavior
     applyDragBehavior(draggableEntities, svgElement);
 
-    // Set initial viewBox to encompass all content
-    updateViewBoxEnhanced(svgElement);
+    // Route all edges with ELK on initial load
+    updateAllLinks().then(() => {
+      // Set initial viewBox to encompass all content after routing
+      updateViewBoxEnhanced(svgElement);
+    });
 
     // Return cleanup function
     return cleanupZoomPan;
@@ -166,45 +177,132 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
     return links;
   };
 
-  // Choose side anchors on rectangle borders based on relative positions (orthogonal)
-  const computeAnchors = (a: EntityBox, b: EntityBox): { start: XY; end: XY; horizontal: boolean } => {
+  // Use ELK to compute orthogonal edge routing with obstacle avoidance
+  const computeElkRouting = async (link: LinkInfo): Promise<XY[]> => {
+    const elk = elkRef.current;
+    if (!elk) return [];
+
+    const srcEntity = entityMapRef.current.get(link.srcId);
+    const dstEntity = entityMapRef.current.get(link.dstId);
+    if (!srcEntity || !dstEntity) return [];
+
+    // Create ELK graph with all entities as fixed-position nodes
+    const children: ElkNode[] = [];
+    const allEntities = Array.from(entityMapRef.current.values());
+
+    allEntities.forEach((entity) => {
+      children.push({
+        id: entity.id,
+        x: entity.x,
+        y: entity.y,
+        width: entity.width,
+        height: entity.height
+      });
+    });
+
+    // Create the edge we want to route
+    const edges: ElkExtendedEdge[] = [{
+      id: `${link.srcId}-${link.dstId}`,
+      sources: [link.srcId],
+      targets: [link.dstId]
+    }];
+
+    const graph: ElkNode = {
+      id: 'root',
+      layoutOptions: {
+        'algorithm': 'fixed',
+        'elk.edgeRouting': 'ORTHOGONAL',
+        'spacing.nodeNode': '20',
+        'elk.spacing.edgeEdge': '10',
+        'elk.spacing.edgeNode': '10'
+      },
+      children,
+      edges
+    };
+
+    try {
+      const layout = await elk.layout(graph);
+
+      if (layout.edges && layout.edges.length > 0) {
+        const routedEdge = layout.edges[0];
+        if (routedEdge?.sections && routedEdge.sections.length > 0) {
+          const section = routedEdge.sections[0];
+          if (!section) return [];
+
+          const points: XY[] = [];
+
+          // Add start point
+          if (section.startPoint) {
+            points.push({
+              x: section.startPoint.x,
+              y: section.startPoint.y
+            });
+          }
+
+          // Add bend points
+          if (section.bendPoints) {
+            section.bendPoints.forEach((bp: { x: number; y: number }) => {
+              points.push({ x: bp.x, y: bp.y });
+            });
+          }
+
+          // Add end point
+          if (section.endPoint) {
+            points.push({
+              x: section.endPoint.x,
+              y: section.endPoint.y
+            });
+          }
+
+          return points;
+        }
+      }
+    } catch (error) {
+      console.warn('ELK routing failed, falling back to simple routing:', error);
+    }
+
+    // Fallback to simple routing if ELK fails
+    return computeSimpleRoute(srcEntity, dstEntity);
+  };
+
+  // Fallback: Simple Manhattan route with 2-3 segments
+  const computeSimpleRoute = (a: EntityBox, b: EntityBox): XY[] => {
     const dx = b.cx - a.cx;
     const dy = b.cy - a.cy;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
     // Prefer horizontal when separation is wider
-    if (absDx >= absDy) {
-      const start: XY = {
-        x: dx >= 0 ? a.x + a.width : a.x, // right or left edge center
+    const horizontal = absDx >= absDy;
+
+    let start: XY, end: XY;
+
+    if (horizontal) {
+      start = {
+        x: dx >= 0 ? a.x + a.width : a.x,
         y: a.cy
       };
-      const end: XY = {
-        x: dx >= 0 ? b.x : b.x + b.width, // left or right edge center
+      end = {
+        x: dx >= 0 ? b.x : b.x + b.width,
         y: b.cy
       };
-      return { start, end, horizontal: true };
     } else {
-      const start: XY = {
+      start = {
         x: a.cx,
-        y: dy >= 0 ? a.y + a.height : a.y // bottom or top edge center
+        y: dy >= 0 ? a.y + a.height : a.y
       };
-      const end: XY = {
+      end = {
         x: b.cx,
-        y: dy >= 0 ? b.y : b.y + b.height // top or bottom edge center
+        y: dy >= 0 ? b.y : b.y + b.height
       };
-      return { start, end, horizontal: false };
     }
-  };
 
-  // Simple Manhattan route with 2-3 segments
-  const manhattanRoute = (start: XY, end: XY, horizontalFirst: boolean): XY[] => {
     // Already aligned - straight line
     if (Math.abs(start.x - end.x) < 0.0001 || Math.abs(start.y - end.y) < 0.0001) {
       return [start, end];
     }
 
-    if (horizontalFirst) {
+    if (horizontal) {
       const midX = (start.x + end.x) / 2;
       return [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
     } else {
@@ -248,22 +346,27 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
   const fmt = (n: number) => Number(n.toFixed(2));
 
   // Update all edges connected to the given entity id (live during drag)
-  const updateEdgesForEntity = (entityId: string) => {
+  const updateEdgesForEntity = async (entityId: string) => {
     const links = linksRef.current;
-    links.forEach((lnk) => {
-      if (lnk.srcId !== entityId && lnk.dstId !== entityId) return;
-      routeAndDrawLink(lnk);
-    });
+    const affectedLinks = links.filter(
+      (lnk) => lnk.srcId === entityId || lnk.dstId === entityId
+    );
+
+    // Route links in parallel for better performance
+    await Promise.all(affectedLinks.map((lnk) => routeAndDrawLink(lnk)));
   };
 
-  // Route and draw a single link using orthogonal polyline and oriented arrowhead
-  const routeAndDrawLink = (lnk: LinkInfo) => {
+  // Route and draw a single link using ELK orthogonal routing with obstacle avoidance
+  const routeAndDrawLink = async (lnk: LinkInfo) => {
     const a = entityMapRef.current.get(lnk.srcId);
     const b = entityMapRef.current.get(lnk.dstId);
     if (!a || !b) return;
 
-    const { start, end, horizontal } = computeAnchors(a, b);
-    const points = manhattanRoute(start, end, horizontal);
+    // Use ELK for sophisticated orthogonal routing
+    const points = await computeElkRouting(lnk);
+
+    if (points.length === 0) return;
+
     lnk.path.setAttribute('d', buildPathD(points));
 
     if (lnk.polygon && points.length >= 2) {
@@ -273,9 +376,10 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
     }
   };
 
-  // Recompute all links after global changes (e.g., after Dagre)
-  const updateAllLinks = () => {
-    linksRef.current.forEach((lnk) => routeAndDrawLink(lnk));
+  // Recompute all links after global changes
+  const updateAllLinks = async () => {
+    // Route all links in parallel for better performance
+    await Promise.all(linksRef.current.map((lnk) => routeAndDrawLink(lnk)));
   };
 
   // Enhanced viewBox update to include entity rects, link paths, and arrow polygons
@@ -349,10 +453,13 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
 
   const requestFrame = (svgElement: SVGSVGElement) => {
     if (rafIdRef.current != null) return;
-    rafIdRef.current = requestAnimationFrame(() => {
+    rafIdRef.current = requestAnimationFrame(async () => {
       const moved = Array.from(movedEntitiesRef.current);
       movedEntitiesRef.current.clear();
-      moved.forEach((id) => updateEdgesForEntity(id));
+
+      // Update edges for all moved entities
+      await Promise.all(moved.map((id) => updateEdgesForEntity(id)));
+
       updateViewBoxEnhanced(svgElement);
       rafIdRef.current = null;
     });
@@ -517,14 +624,14 @@ export const CorrectPlantUMLEditor: React.FC<CorrectPlantUMLEditorProps> = ({
           requestFrame(svgElement);
         }
       })
-      .on('end', function () {
+      .on('end', async function () {
         setIsDragging(false);
         isEntityDragRef.current = false;
         const group = this as SVGGElement;
         d3.select(group).style('cursor', 'grab');
 
-        // After drag ends, recompute all edges orthogonally without moving node positions
-        updateAllLinks();
+        // After drag ends, recompute all edges using ELK routing
+        await updateAllLinks();
 
         // Update viewBox after final placement
         updateViewBoxEnhanced(svgElement);
