@@ -10,19 +10,12 @@ import './App.css';
 
 const App: React.FC = () => {
   const [plantumlSource, setPlantumlSource] = useState(`@startuml
-title Sample Activity Diagram - React Flow PoC
-
 start
-
 :Initialize System;
-
 :Load User Profile;
-
 if (Profile Valid?) then (yes)
   :Display Dashboard;
-
   :Process User Request;
-
   if (Request Type?) then (create)
     :Create New Item;
   else (update)
@@ -30,17 +23,12 @@ if (Profile Valid?) then (yes)
   else (delete)
     :Delete Item;
   endif
-
   :Save Changes;
-
 else (no)
   :Show Error Message;
 endif
-
 :Log Activity;
-
 stop
-
 @enduml`);
 
   const [svgContent, setSvgContent] = useState<string>('');
