@@ -12,8 +12,6 @@ import ReactFlow, {
   MiniMap,
   useNodesState,
   useEdgesState,
-  Connection,
-  addEdge,
   BackgroundVariant,
   Panel,
 } from 'reactflow';
@@ -121,14 +119,6 @@ export default function ReactFlowEditor({ svgContent, onNodesChange, onEdgesChan
     [onEdgesChangeInternal, onEdgesChange, setEdges]
   );
 
-  // Handle new connections
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, type: 'smoothstep' }, eds));
-    },
-    [setEdges]
-  );
-
   // Apply constraints from handler (if any)
   const snapToGrid = detectedHandler?.constraints?.snapToGrid ?? false;
   const snapGrid: [number, number] = [
@@ -145,9 +135,11 @@ export default function ReactFlowEditor({ svgContent, onNodesChange, onEdgesChan
         edgeTypes={edgeTypes}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={onConnect}
         snapToGrid={snapToGrid}
         snapGrid={snapGrid}
+        nodesDraggable={true}
+        nodesConnectable={false}
+        connectOnClick={false}
         fitView
         minZoom={0.1}
         maxZoom={4}

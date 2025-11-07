@@ -4,7 +4,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { NodeProps } from 'reactflow';
 
 interface RectangleNodeData {
   label: string;
@@ -36,18 +36,6 @@ function RectangleNode({ data, selected }: NodeProps<RectangleNodeData>) {
         transition: 'box-shadow 0.2s',
       }}
     >
-      {/* Connection handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: '#555', width: '8px', height: '8px' }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ background: '#555', width: '8px', height: '8px' }}
-      />
-
       {/* Label */}
       <div
         style={{
@@ -58,18 +46,6 @@ function RectangleNode({ data, selected }: NodeProps<RectangleNodeData>) {
       >
         {data.label}
       </div>
-
-      {/* Source handles */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ background: '#555', width: '8px', height: '8px' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ background: '#555', width: '8px', height: '8px' }}
-      />
     </div>
   );
 }

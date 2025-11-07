@@ -10,17 +10,37 @@ import './App.css';
 
 const App: React.FC = () => {
   const [plantumlSource, setPlantumlSource] = useState(`@startuml
-left to right direction
-skinparam linetype ortho
-rectangle "Login\\nScenario" as login
-rectangle "Dashboard\\nScenario" as dash
-rectangle "Create Item\\nScenario" as create
-rectangle "Validation\\nTest" as valid
-rectangle "Database\\nTest" as db
-login --> dash
-dash --> create
-create --> valid
-create --> db
+title Sample Activity Diagram - React Flow PoC
+
+start
+
+:Initialize System;
+
+:Load User Profile;
+
+if (Profile Valid?) then (yes)
+  :Display Dashboard;
+
+  :Process User Request;
+
+  if (Request Type?) then (create)
+    :Create New Item;
+  else (update)
+    :Update Existing Item;
+  else (delete)
+    :Delete Item;
+  endif
+
+  :Save Changes;
+
+else (no)
+  :Show Error Message;
+endif
+
+:Log Activity;
+
+stop
+
 @enduml`);
 
   const [svgContent, setSvgContent] = useState<string>('');

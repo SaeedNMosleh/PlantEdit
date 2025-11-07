@@ -4,7 +4,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { NodeProps } from 'reactflow';
 
 interface CircleNodeData {
   label: string;
@@ -24,18 +24,6 @@ function CircleNode({ data, selected }: NodeProps<CircleNodeData>) {
         height: `${size}px`,
       }}
     >
-      {/* Connection handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: '#555', width: '8px', height: '8px', top: '0' }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ background: '#555', width: '8px', height: '8px', left: '0' }}
-      />
-
       {/* Circle shape */}
       <div
         style={{
@@ -65,18 +53,6 @@ function CircleNode({ data, selected }: NodeProps<CircleNodeData>) {
           {data.label}
         </div>
       </div>
-
-      {/* Source handles */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ background: '#555', width: '8px', height: '8px', right: '0' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ background: '#555', width: '8px', height: '8px', bottom: '0' }}
-      />
     </div>
   );
 }

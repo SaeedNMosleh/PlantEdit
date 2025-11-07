@@ -4,7 +4,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { NodeProps } from 'reactflow';
 
 interface EllipseNodeData {
   label: string;
@@ -25,18 +25,6 @@ function EllipseNode({ data, selected }: NodeProps<EllipseNodeData>) {
         height: `${height}px`,
       }}
     >
-      {/* Connection handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: '#555', width: '8px', height: '8px', top: '0', left: '50%', transform: 'translateX(-50%)' }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ background: '#555', width: '8px', height: '8px', top: '50%', left: '0', transform: 'translateY(-50%)' }}
-      />
-
       {/* SVG Ellipse */}
       <svg
         width={width}
@@ -80,18 +68,6 @@ function EllipseNode({ data, selected }: NodeProps<EllipseNodeData>) {
           ))}
         </text>
       </svg>
-
-      {/* Source handles */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ background: '#555', width: '8px', height: '8px', top: '50%', right: '0', transform: 'translateY(-50%)' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ background: '#555', width: '8px', height: '8px', bottom: '0', left: '50%', transform: 'translateX(-50%)' }}
-      />
     </div>
   );
 }
