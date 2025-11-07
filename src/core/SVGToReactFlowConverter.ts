@@ -41,46 +41,88 @@ export class SVGToReactFlowConverter {
 
   /**
    * Parse nodes from SVG - detects various shape types
+   * Updated to handle PlantUML activity diagrams and other diagram types
    */
   private parseNodes(svg: SVGElement): ParsedNode[] {
     const nodes: ParsedNode[] = [];
+
+    // Try multiple strategies to find nodes
+    // Strategy 1: Look for g.entity (works for component diagrams, use cases, etc.)
     const entityGroups = svg.querySelectorAll('g.entity');
 
-    entityGroups.forEach((g, index) => {
-      const svgGroup = g as SVGGElement;
-
-      // Try to detect shape type
-      const shapeInfo = this.detectShapeType(svgGroup);
-      if (!shapeInfo) return;
-
-      // Extract text content
-      const textElements = Array.from(svgGroup.querySelectorAll('text'));
-      const label = textElements.map(t => t.textContent || '').join('\n').trim();
-
-      // Extract position and size
-      const bounds = this.getElementBounds(shapeInfo.element);
-
-      // Extract ID from data attributes or generate one
-      const id =
-        svgGroup.getAttribute('data-entity') ||
-        svgGroup.getAttribute('id') ||
-        `node-${index}`;
-
-      nodes.push({
-        id,
-        shapeType: shapeInfo.type,
-        label,
-        position: { x: bounds.x, y: bounds.y },
-        size: { width: bounds.width, height: bounds.height },
-        svgElement: svgGroup,
-        metadata: {
-          originalSVG: svgGroup.outerHTML,
-          textElements: textElements.length,
-        },
+    if (entityGroups.length > 0) {
+      console.log('✅ Found g.entity elements:', entityGroups.length);
+      entityGroups.forEach((g, index) => {
+        const node = this.parseNodeFromGroup(g as SVGGElement, index);
+        if (node) nodes.push(node);
       });
-    });
+    } else {
+      console.log('⚠️ No g.entity elements found, trying broader search...');
+
+      // Strategy 2: Find all <g> elements that contain shapes
+      // This works for activity diagrams and other types
+      const allGroups = svg.querySelectorAll('g');
+
+      allGroups.forEach((g, index) => {
+        const svgGroup = g as SVGGElement;
+
+        // Check if this group has a shape element directly
+        const hasRect = svgGroup.querySelector(':scope > rect');
+        const hasEllipse = svgGroup.querySelector(':scope > ellipse');
+        const hasCircle = svgGroup.querySelector(':scope > circle');
+        const hasPolygon = svgGroup.querySelector(':scope > polygon');
+
+        if (hasRect || hasEllipse || hasCircle || hasPolygon) {
+          // Skip if this is a link/edge group or background element
+          const id = svgGroup.getAttribute('id') || '';
+          if (id.includes('link') || id.includes('edge') || svgGroup.classList.contains('link')) {
+            return;
+          }
+
+          const node = this.parseNodeFromGroup(svgGroup, index);
+          if (node) nodes.push(node);
+        }
+      });
+
+      console.log('✅ Found nodes via broader search:', nodes.length);
+    }
 
     return nodes;
+  }
+
+  /**
+   * Parse a single node from a group element
+   */
+  private parseNodeFromGroup(svgGroup: SVGGElement, index: number): ParsedNode | null {
+    // Try to detect shape type
+    const shapeInfo = this.detectShapeType(svgGroup);
+    if (!shapeInfo) return null;
+
+    // Extract text content
+    const textElements = Array.from(svgGroup.querySelectorAll('text'));
+    const label = textElements.map(t => t.textContent || '').join('\n').trim();
+
+    // Extract position and size
+    const bounds = this.getElementBounds(shapeInfo.element);
+
+    // Extract ID from data attributes or generate one
+    const id =
+      svgGroup.getAttribute('data-entity') ||
+      svgGroup.getAttribute('id') ||
+      `node-${index}`;
+
+    return {
+      id,
+      shapeType: shapeInfo.type,
+      label,
+      position: { x: bounds.x, y: bounds.y },
+      size: { width: bounds.width, height: bounds.height },
+      svgElement: svgGroup,
+      metadata: {
+        originalSVG: svgGroup.outerHTML,
+        textElements: textElements.length,
+      },
+    };
   }
 
   /**
@@ -223,44 +265,91 @@ export class SVGToReactFlowConverter {
 
   /**
    * Parse edges/links from SVG
+   * Updated to handle different PlantUML edge structures
    */
   private parseEdges(svg: SVGElement): ParsedEdge[] {
     const edges: ParsedEdge[] = [];
+
+    // Strategy 1: Look for g.link elements (traditional approach)
     const linkGroups = svg.querySelectorAll('g.link');
 
-    linkGroups.forEach((g, index) => {
-      const svgGroup = g as SVGGElement;
+    if (linkGroups.length > 0) {
+      console.log('✅ Found g.link elements:', linkGroups.length);
 
-      const path = svgGroup.querySelector('path');
-      if (!path) return;
+      linkGroups.forEach((g, index) => {
+        const svgGroup = g as SVGGElement;
 
-      const sourceId = svgGroup.getAttribute('data-entity-1') || '';
-      const targetId = svgGroup.getAttribute('data-entity-2') || '';
+        const path = svgGroup.querySelector('path');
+        if (!path) return;
 
-      if (!sourceId || !targetId) return;
+        const sourceId = svgGroup.getAttribute('data-entity-1') || '';
+        const targetId = svgGroup.getAttribute('data-entity-2') || '';
 
-      // Extract label if present
-      const textElement = svgGroup.querySelector('text');
-      const label = textElement?.textContent?.trim();
+        if (!sourceId || !targetId) return;
 
-      // Parse path points (simplified)
-      const pathData = path.getAttribute('d') || '';
-      const points = this.parsePathToPoints(pathData);
+        // Extract label if present
+        const textElement = svgGroup.querySelector('text');
+        const label = textElement?.textContent?.trim();
 
-      const id = `edge-${sourceId}-${targetId}-${index}`;
+        // Parse path points (simplified)
+        const pathData = path.getAttribute('d') || '';
+        const points = this.parsePathToPoints(pathData);
 
-      edges.push({
-        id,
-        source: sourceId,
-        target: targetId,
-        ...(label ? { label } : {}),
-        ...(points.length > 0 ? { points } : {}),
-        svgElement: svgGroup,
-        metadata: {
-          originalPath: pathData,
-        },
+        const id = `edge-${sourceId}-${targetId}-${index}`;
+
+        edges.push({
+          id,
+          source: sourceId,
+          target: targetId,
+          ...(label ? { label } : {}),
+          ...(points.length > 0 ? { points } : {}),
+          svgElement: svgGroup,
+          metadata: {
+            originalPath: pathData,
+          },
+        });
       });
-    });
+    } else {
+      console.log('⚠️ No g.link elements found, trying to find paths...');
+
+      // Strategy 2: Find all path elements that look like connections
+      // This is more generic but less reliable for determining source/target
+      const allPaths = svg.querySelectorAll('path');
+      const nodeIds: string[] = [];
+
+      // Collect all node IDs first
+      svg.querySelectorAll('g').forEach(g => {
+        const id = g.getAttribute('id');
+        if (id && !id.includes('link') && !id.includes('edge')) {
+          nodeIds.push(id);
+        }
+      });
+
+      allPaths.forEach((path, index) => {
+        const pathElement = path as SVGPathElement;
+        const parent = pathElement.parentElement;
+
+        // Skip if this is part of a shape
+        if (parent?.querySelector('rect, ellipse, circle, polygon')) {
+          return;
+        }
+
+        // Create a generic edge
+        const id = `edge-${index}`;
+
+        edges.push({
+          id,
+          source: nodeIds[0] || 'unknown',
+          target: nodeIds[Math.min(1, nodeIds.length - 1)] || 'unknown',
+          svgElement: (parent || pathElement.parentNode) as SVGGElement,
+          metadata: {
+            originalPath: pathElement.getAttribute('d') || '',
+          },
+        });
+      });
+
+      console.log('✅ Found edges via path search:', edges.length);
+    }
 
     return edges;
   }

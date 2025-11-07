@@ -10,19 +10,15 @@ import './App.css';
 
 const App: React.FC = () => {
   const [plantumlSource, setPlantumlSource] = useState(`@startuml
-left to right direction
-skinparam linetype ortho
-rectangle "User Login" as login
-rectangle "Verify Credentials" as verify
-rectangle "Load Dashboard" as dash
-rectangle "Display Data" as display
-circle Start
-circle End
-Start --> login
-login --> verify
-verify --> dash
-dash --> display
-display --> End
+start
+:Read Input;
+if (Valid?) then (yes)
+  :Process;
+else (no)
+  :Show Error;
+endif
+:Done;
+stop
 @enduml`);
 
   const [svgContent, setSvgContent] = useState<string>('');
