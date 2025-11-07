@@ -11,23 +11,16 @@ import './App.css';
 const App: React.FC = () => {
   const [plantumlSource, setPlantumlSource] = useState(`@startuml
 start
-:Initialize System;
-:Load User Profile;
-if (Profile Valid?) then (yes)
-  :Display Dashboard;
-  :Process User Request;
-  if (Request Type?) then (create)
-    :Create New Item;
-  else (update)
-    :Update Existing Item;
-  else (delete)
-    :Delete Item;
-  endif
-  :Save Changes;
+:Read User Input;
+if (Valid Input?) then (yes)
+  :Process Data;
+  :Save to Database;
+  :Send Confirmation;
 else (no)
-  :Show Error Message;
+  :Show Error;
+  :Log Error;
 endif
-:Log Activity;
+:Cleanup;
 stop
 @enduml`);
 
