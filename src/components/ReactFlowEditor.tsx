@@ -51,26 +51,51 @@ export default function ReactFlowEditor({ svgContent, onNodesChange, onEdgesChan
     if (!svgContent) return;
 
     try {
-      const converter = new SVGToReactFlowConverter();
-      const result = converter.convert(svgContent);
-
       // Parse SVG to detect handler
       const parser = new DOMParser();
       const doc = parser.parseFromString(svgContent, 'image/svg+xml');
       const svgElement = doc.documentElement as unknown as SVGElement;
+
+      // Debug: Log SVG structure
+      console.log('📄 SVG Element:', svgElement);
+      console.log('🔍 Looking for g.entity elements:', svgElement.querySelectorAll('g.entity').length);
+      console.log('🔍 All g elements:', svgElement.querySelectorAll('g').length);
+      console.log('🔍 All rect elements:', svgElement.querySelectorAll('rect').length);
+      console.log('🔍 All ellipse elements:', svgElement.querySelectorAll('ellipse').length);
+      console.log('🔍 All polygon elements:', svgElement.querySelectorAll('polygon').length);
 
       // Detect appropriate handler
       const handler = diagramRegistry.detectHandler(svgElement);
       setDetectedHandler(handler);
 
       console.log('🎯 Detected diagram handler:', handler?.displayName || 'None');
-      console.log('📊 Parsed nodes:', result.nodes.length);
-      console.log('🔗 Parsed edges:', result.edges.length);
 
-      setNodes(result.nodes);
-      setEdges(result.edges);
+      if (handler) {
+        // Use handler to parse
+        const parsedNodes = handler.parseNodes(svgElement);
+        const parsedEdges = handler.parseEdges(svgElement);
+
+        console.log('📊 Handler parsed nodes:', parsedNodes.length);
+        console.log('🔗 Handler parsed edges:', parsedEdges.length);
+
+        // Convert to React Flow format
+        const converter = new SVGToReactFlowConverter();
+        const result = converter.convert(svgContent);
+
+        console.log('✅ Converted nodes:', result.nodes.length);
+        console.log('✅ Converted edges:', result.edges.length);
+
+        if (result.nodes.length === 0) {
+          console.warn('⚠️ No nodes found! SVG might not have expected structure');
+        }
+
+        setNodes(result.nodes);
+        setEdges(result.edges);
+      } else {
+        console.error('❌ No handler detected for this SVG');
+      }
     } catch (error) {
-      console.error('Error converting SVG to React Flow:', error);
+      console.error('❌ Error converting SVG to React Flow:', error);
     }
   }, [svgContent, setNodes, setEdges]);
 
