@@ -19,9 +19,9 @@ Enable **interactive editing of PlantUML diagrams** by providing a visual interf
 5. **Incremental Development**: Build diagram support one type at a time
 
 ### 1.3 Non-Goals
-- Parse PlantUML source code directly (use SVG output instead)
 - Support all PlantUML features in first version
 - Real-time collaboration (future consideration)
+- Generate PlantUML diagrams from scratch (editing existing diagrams only)
 
 ## 2. Fundamental Insight
 
@@ -55,49 +55,61 @@ Enable **interactive editing of PlantUML diagrams** by providing a visual interf
 
 ## 3. System Architecture
 
-### 3.1 Two-Layer Architecture
+### 3.1 Two-Parser Architecture
+
+PlantEdit uses **two independent parsers** working together:
+
+1. **tree-sitter-plantuml** - Parses PlantUML source code → AST with source locations
+2. **svgson** - Parses PlantUML-generated SVG → Visual properties
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     PlantUML Source                          │
-│                  @startuml ... @enduml                       │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         │ PlantUML Server/CLI
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    PlantUML SVG Output                       │
-│              (Diagram-type-specific structure)               │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         │
-            ╔════════════▼═══════════════╗
-            ║      LAYER 1               ║
-            ║  Diagram Type System       ║
-            ║  (Foundation Layer)        ║
-            ╚════════════╦═══════════════╝
-                         │
-            ┌────────────▼────────────┐
-            │  Diagram Type Detection │
-            └────────────┬────────────┘
-                         │
-            ┌────────────▼─────────────────────────────┐
-            │  Diagram-Specific Parser                 │
-            │  (Activity / Sequence / Class / etc.)    │
-            └────────────┬─────────────────────────────┘
-                         │
-            ┌────────────▼────────────┐
-            │   Domain Model          │
-            │   (Diagram Concepts)    │
-            │   - Nodes               │
-            │   - Edges               │
-            │   - Metadata            │
-            │   - Editability Rules   │
-            └────────────┬────────────┘
-                         │
-            ╔════════════▼═══════════════╗
-            ║      LAYER 2               ║
-            ║   Rendering System         ║
+┌───────────────────────────────────────────────────────────────┐
+│                     PlantUML Source Code                       │
+│                  @startuml ... @enduml                         │
+└────────┬──────────────────────────────────┬───────────────────┘
+         │                                  │
+         │                                  │ PlantUML Server/CLI
+         │                                  ↓
+         │                    ┌─────────────────────────────────┐
+         │                    │     PlantUML SVG Output         │
+         │                    │ (Diagram-type-specific)         │
+         │                    └──────────┬──────────────────────┘
+         │                               │
+┌────────▼─────────┐          ┌──────────▼─────────┐
+│ tree-sitter      │          │ svgson             │
+│ PlantUML Parser  │          │ SVG Parser         │
+│ (Separate Repo)  │          │ (npm package)      │
+└────────┬─────────┘          └──────────┬─────────┘
+         │                               │
+         │ AST with                      │ SVG AST with
+         │ source locations              │ visual properties
+         │                               │
+         └────────────┬──────────────────┘
+                      │
+         ╔════════════▼═══════════════╗
+         ║      LAYER 1               ║
+         ║  Diagram Type System       ║
+         ║  (Foundation Layer)        ║
+         ╚════════════╦═══════════════╝
+                      │
+         ┌────────────▼────────────┐
+         │  Source Mapper          │
+         │  (Merge ASTs)           │
+         └────────────┬────────────┘
+                      │
+         ┌────────────▼────────────────┐
+         │   Domain Model              │
+         │   (Complete)                │
+         │   - Nodes                   │
+         │   - Edges                   │
+         │   - Visual properties (SVG) │
+         │   - Source locations (AST)  │
+         │   - Editability Rules       │
+         └────────────┬────────────────┘
+                      │
+         ╔════════════▼═══════════════╗
+         ║      LAYER 2               ║
+         ║   Rendering System         ║
             ║  (Presentation Layer)      ║
             ╚════════════╦═══════════════╝
                          │
@@ -124,7 +136,104 @@ Enable **interactive editing of PlantUML diagrams** by providing a visual interf
 * Source code update is future enhancement
 ```
 
-### 3.2 Layer 1: Diagram Type System (Foundation)
+### 3.2 Parser Strategy
+
+#### Two Parsers Working Together
+
+PlantEdit uses two specialized parsers, each handling a specific aspect:
+
+**1. tree-sitter-plantuml** (Separate Project)
+- **Purpose**: Parse PlantUML source code
+- **Output**: AST with source locations
+- **Repository**: Standalone npm package
+- **Features**:
+  - Sub-millisecond incremental parsing
+  - Automatic error recovery
+  - Lossless concrete syntax tree
+  - LSP-ready (for future Language Server)
+- **Specification**: [../parsers/tree-sitter-plantuml.md](../parsers/tree-sitter-plantuml.md)
+
+**2. svgson** (npm package)
+- **Purpose**: Parse PlantUML-generated SVG
+- **Output**: JSON AST with visual properties
+- **Package**: `svgson` from npm
+- **Features**:
+  - Bidirectional (parse ↔ stringify)
+  - Clean JSON structure
+  - Browser + Node.js compatible
+  - Sufficient performance for PlantUML SVGs
+- **Specification**: [../parsers/svgson.md](../parsers/svgson.md)
+
+#### Why Two Parsers?
+
+**Use Cases Enabled**:
+
+1. **Visual Editing** (SVG parser)
+   - Extract node positions, sizes, colors
+   - Understand visual layout
+   - Render and manipulate visually
+
+2. **Source Mapping** (PlantUML parser)
+   - Map visual elements back to source code lines
+   - Preserve user's formatting and comments
+   - Surgical code updates (change only affected lines)
+   - Real-time syntax validation
+
+3. **Round-Trip Editing** (Both parsers together)
+   - User moves node visually
+   - Update ONLY corresponding source line
+   - Preserve everything else in source
+   - Professional editing experience
+
+4. **Language Server Protocol** (PlantUML parser)
+   - Code completion
+   - Syntax validation
+   - Go-to-definition
+   - Symbol outline
+   - Real-time diagnostics
+
+#### Integration Flow
+
+```typescript
+// 1. Parse PlantUML source
+const sourceAST = treeSitterParser.parse(plantUMLCode);
+
+// 2. Generate SVG via PlantUML
+const svg = await generateSVG(plantUMLCode);
+
+// 3. Parse SVG
+const svgAST = await svgson.parse(svg);
+
+// 4. Merge information
+const domainModel = {
+  nodes: extractNodes(svgAST).map((node, i) => ({
+    ...node,  // Visual properties from SVG
+    sourceLocation: findSourceLocation(sourceAST, node)  // From tree-sitter
+  })),
+  // ...
+};
+```
+
+#### Development Strategy
+
+**Phase 1**: SVG Parser Only
+- Implement Layer 1 with svgson
+- Visual editing without source mapping
+- Proves architecture works
+
+**Phase 2**: tree-sitter-plantuml Development (Parallel)
+- **Separate project**: `tree-sitter-plantuml`
+- Incremental grammar development
+- Comprehensive test suite
+- Publish as npm package
+
+**Phase 3**: Integration
+- Consume tree-sitter-plantuml package
+- Implement source mapping
+- Enable round-trip editing
+- Build LSP server (optional)
+
+### 3.3 Layer 1: Diagram Type System (Foundation)
 
 **Purpose**: Transform PlantUML SVG into structured, editable diagram concepts
 

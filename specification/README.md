@@ -22,42 +22,80 @@ This directory contains the complete architectural and technical specifications 
 - **[svg-analysis-process.md](processes/svg-analysis-process.md)** - How to analyze PlantUML SVG output
 - **[testing-strategy.md](processes/testing-strategy.md)** - Testing approach for diagram types
 
-### 4. PlantUML Reference Documentation
+### 4. Parser Specifications
+- **[tree-sitter-plantuml.md](parsers/tree-sitter-plantuml.md)** - PlantUML source code parser (Separate Project)
+  - Why tree-sitter? Comparison with alternatives
+  - Grammar structure and incremental development
+  - Testing strategy for incremental grammar completion
+  - Integration with PlantEdit
+  - **Note**: Developed as standalone npm package
+
+- **[svgson.md](parsers/svgson.md)** - SVG parser for visual property extraction
+  - Why svgson? Bidirectional conversion
+  - API overview and usage patterns
+  - Integration with PlantUML SVG patterns
+  - Performance considerations
+
+### 5. PlantUML Reference Documentation
 - **[svg-generation-patterns.md](plantuml/svg-generation-patterns.md)** - Comprehensive PlantUML SVG generation patterns
   - Core SVG architecture and classes
   - Diagram-specific patterns (Activity, Sequence, Class, Component, State)
   - Parser implementation guide with code examples
   - Detection strategies and common pitfalls
 
-### 5. Interface Definitions
+### 6. Interface Definitions
 - **[core-interfaces.md](interfaces/core-interfaces.md)** - Core TypeScript interfaces
 - **[diagram-type-interface.md](interfaces/diagram-type-interface.md)** - DiagramType interface specification
 - **[rendering-adapter-interface.md](interfaces/rendering-adapter-interface.md)** - Rendering layer interface
 
-### 6. Examples
+### 7. Examples
 - **[activity-diagram-example.md](examples/activity-diagram-example.md)** - Complete worked example for Activity Diagrams
 - **[svg-samples/](examples/svg-samples/)** - Sample PlantUML SVG outputs
 
 ## 🎯 Key Design Principles
 
-### 1. **Separation of Concerns**
+### 1. **Two-Parser Architecture**
+```
+PlantUML Source Code → tree-sitter → AST (source locations)
+                             ↓
+                    PlantUML Server
+                             ↓
+         SVG → svgson → Visual Properties
+                             ↓
+                    Source Mapper
+                             ↓
+              Complete Domain Model
+       (visual + source + editability)
+```
+
+**Two Specialized Parsers**:
+- **tree-sitter-plantuml**: Parses source code, provides AST with source locations, enables LSP
+- **svgson**: Parses SVG, extracts visual properties, enables bidirectional conversion
+
+**Why Both?**
+- Round-trip editing: Modify only affected source lines
+- Preserve formatting and comments
+- Real-time syntax validation
+- Future LSP support (code completion, diagnostics, etc.)
+
+### 2. **Separation of Concerns**
 ```
 Layer 1: PlantUML SVG → Diagram Concepts (Domain Model)
          ↓
 Layer 2: Diagram Concepts → Visual Representation (Rendering)
 ```
 
-### 2. **Per-Diagram-Type Approach**
+### 3. **Per-Diagram-Type Approach**
 - Each PlantUML diagram type has **unique SVG structure**
 - No universal parser - each type gets its **own systematic implementation**
 - Diagram types are **isolated** and **independently testable**
 
-### 3. **Incremental & Scalable**
+### 4. **Incremental & Scalable**
 - Add diagram types **one at a time**
 - Each addition **validates the architecture**
 - **Systematic process** ensures consistency
 
-### 4. **Rendering Library Agnostic**
+### 5. **Rendering Library Agnostic**
 - Rendering is **Layer 2** (comes after Layer 1 is solid)
 - Can use **different renderers** for different diagram types
 - Can **switch renderers** without rewriting parsers
@@ -190,10 +228,13 @@ See [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) for comple
 
 **If you're implementing**:
 1. [02-layer1-diagram-type-system.md](architecture/02-layer1-diagram-type-system.md) (foundation)
-2. [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) (PlantUML internals - essential)
-3. [core-interfaces.md](interfaces/core-interfaces.md) (contracts)
-4. [activity-diagram.md](diagram-types/activity-diagram.md) (first diagram type)
-5. [svg-analysis-process.md](processes/svg-analysis-process.md) (how to analyze)
+2. **Parser specifications** (critical):
+   - [svgson.md](parsers/svgson.md) (SVG parser - use immediately)
+   - [tree-sitter-plantuml.md](parsers/tree-sitter-plantuml.md) (Source parser - separate project)
+3. [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) (PlantUML internals - essential)
+4. [core-interfaces.md](interfaces/core-interfaces.md) (contracts)
+5. [activity-diagram.md](diagram-types/activity-diagram.md) (first diagram type)
+6. [svg-analysis-process.md](processes/svg-analysis-process.md) (how to analyze)
 
 **If you're extending**:
 1. [template.md](diagram-types/template.md) (template for new types)
@@ -202,9 +243,12 @@ See [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) for comple
 
 ## ✅ Specification Completeness
 
-- [x] System Architecture
+- [x] System Architecture (with two-parser approach)
 - [x] Layer 1 Specification
 - [x] Layer 2 Specification
+- [x] **Parser Specifications**
+  - [x] tree-sitter-plantuml (Separate project specification)
+  - [x] svgson (SVG parser specification)
 - [x] PlantUML SVG Generation Patterns (Research-based)
 - [x] Activity Diagram Specification (Reference Implementation)
 - [x] Process Documentation
