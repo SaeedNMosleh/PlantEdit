@@ -4,6 +4,19 @@
 
 This document provides a complete, step-by-step process for adding support for a new PlantUML diagram type to PlantEdit.
 
+## Essential Prerequisites
+
+**Before starting, read**: [../plantuml/svg-generation-patterns.md](../plantuml/svg-generation-patterns.md)
+
+This research document contains:
+- How PlantUML generates SVG for each diagram type (based on Java source code analysis)
+- Metadata conventions (`data-*` attributes, `class`, `id` patterns)
+- Detection strategies for all major diagram types
+- Parser implementation guide with real examples
+- Common pitfalls and how to avoid them
+
+The information in that document will save you significant time and prevent common mistakes.
+
 ## Overview
 
 Adding a new diagram type involves 7 main steps:
@@ -67,11 +80,22 @@ Open SVGs in a text editor or browser dev tools and document:
 - [ ] How are different node types represented?
 - [ ] What SVG elements are used (rect, ellipse, path, etc.)?
 - [ ] What CSS classes or IDs are used?
+- [ ] **What `data-*` attributes are present?** (PlantUML metadata - CRITICAL!)
+- [ ] **Are there `data-entity`, `data-entity-uid`, `data-qualified-name` attributes?**
+- [ ] **Are there `data-participant` attributes?** (Sequence diagrams)
+- [ ] **Are there `data-entity-1-uid`, `data-entity-2-uid` on links?** (Relationships)
 - [ ] How is text/labels positioned?
 - [ ] How are edges/connections represented?
 - [ ] Are there consistent attributes (like specific rx/ry values)?
-- [ ] How is hierarchy/grouping handled?
+- [ ] How is hierarchy/grouping handled (`<g>` elements)?
+- [ ] **What `transform="translate(...)"` patterns exist?** (Nested transforms!)
 - [ ] Are there special elements (notes, frames, etc.)?
+
+**PlantUML Metadata Priority** (See [svg-generation-patterns.md](../plantuml/svg-generation-patterns.md)):
+1. **First, look for `data-*` attributes** - These are the most reliable identifiers
+2. **Then, look for `class` attributes** - e.g., `class="entity"`
+3. **Then, look for `id` patterns** - e.g., `id="entity_*"`, `id="state_*"`
+4. **Finally, look for structural patterns** - Shape types, sizes, etc.
 
 **Document findings** in a temporary file:
 
@@ -84,23 +108,33 @@ Example findings:
 # Sequence Diagram SVG Structure
 
 ## Participants
-- Represented as: <rect class="participant">
+- Represented as: <g data-participant="Alice"> containing <rect>
+- **Metadata**: `data-participant` attribute with participant name (CRITICAL!)
 - Text label: <text> child of parent <g>
-- Position: x,y attributes on rect
+- Position: x,y attributes on rect OR transform on <g>
 - Width: width attribute (varies)
 - Height: Usually 40px
+- **Note**: Participant names come from `data-participant`, NOT just visual text!
 
 ## Lifelines
-- Represented as: <line class="lifeline">
-- Starts: Below participant box
-- Extends: To bottom of diagram
-- Style: Dashed line
+- Represented as: <line> with vertical orientation
+- Starts: Below participant box (y1 = participant.y + height)
+- Extends: To bottom of diagram (y2 = max Y)
+- Style: Dashed line (stroke-dasharray="5,5")
+- No specific data attributes
 
 ## Messages
-- Represented as: <line class="message"> + <polygon> (arrow)
-- Direction: From lifeline to lifeline
+- Represented as: <g data-participant-1="Alice" data-participant-2="Bob">
+- **Metadata**: Source and target via `data-participant-1` and `data-participant-2` (CRITICAL!)
+- Contains: <path> for arrow body + optional arrowhead shape
+- Direction: From lifeline to lifeline (x1, x2 match participant centers)
 - Label: <text> positioned above line
-- Types: Can be solid or dashed
+- Types: Solid (synchronous) or dashed (asynchronous)
+- **Note**: Link endpoints from metadata, NOT coordinate matching!
+
+## Key Discovery
+PlantUML adds semantic metadata that makes parsing 10x easier than pure SVG analysis!
+Use data-* attributes first, fallback to structural patterns only if needed.
 ```
 
 ### 1.3 Identify Patterns

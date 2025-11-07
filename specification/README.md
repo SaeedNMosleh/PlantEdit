@@ -22,12 +22,19 @@ This directory contains the complete architectural and technical specifications 
 - **[svg-analysis-process.md](processes/svg-analysis-process.md)** - How to analyze PlantUML SVG output
 - **[testing-strategy.md](processes/testing-strategy.md)** - Testing approach for diagram types
 
-### 4. Interface Definitions
+### 4. PlantUML Reference Documentation
+- **[svg-generation-patterns.md](plantuml/svg-generation-patterns.md)** - Comprehensive PlantUML SVG generation patterns
+  - Core SVG architecture and classes
+  - Diagram-specific patterns (Activity, Sequence, Class, Component, State)
+  - Parser implementation guide with code examples
+  - Detection strategies and common pitfalls
+
+### 5. Interface Definitions
 - **[core-interfaces.md](interfaces/core-interfaces.md)** - Core TypeScript interfaces
 - **[diagram-type-interface.md](interfaces/diagram-type-interface.md)** - DiagramType interface specification
 - **[rendering-adapter-interface.md](interfaces/rendering-adapter-interface.md)** - Rendering layer interface
 
-### 5. Examples
+### 6. Examples
 - **[activity-diagram-example.md](examples/activity-diagram-example.md)** - Complete worked example for Activity Diagrams
 - **[svg-samples/](examples/svg-samples/)** - Sample PlantUML SVG outputs
 
@@ -148,6 +155,23 @@ Layer 2: Diagram Concepts → Visual Representation (Rendering)
 - Systematic process ensures quality
 - Incremental approach reduces risk
 
+### PlantUML Internals (Research-Based)
+
+**PlantUML uses a sophisticated multi-layer architecture** (Java-based):
+- **SVEK Engine**: "Scalable Vector Graphics Engine Kernel" for entity-relationship diagrams
+- **UGraphic Abstraction**: Platform-independent drawing API
+- **Semantic Metadata**: Rich `data-*` attributes on SVG `<g>` elements
+- **Per-Diagram Renderers**: Each diagram type has specialized rendering logic
+
+**Key findings for parser implementation**:
+- `data-entity`, `data-entity-uid`, `data-qualified-name` - Primary entity identifiers
+- `data-entity-1-uid`, `data-entity-2-uid` - Link endpoint identifiers
+- `data-participant`, `data-participant-1`, `data-participant-2` - Sequence diagram actors
+- ID patterns: `entity_*`, `state_*`, `activity_*` for different element types
+- Transforms are hierarchical - must account for nested `translate()` operations
+
+See [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) for complete details.
+
 ### What Makes This Scalable?
 
 1. **Clear Contracts**: Interfaces define exact expectations
@@ -166,9 +190,10 @@ Layer 2: Diagram Concepts → Visual Representation (Rendering)
 
 **If you're implementing**:
 1. [02-layer1-diagram-type-system.md](architecture/02-layer1-diagram-type-system.md) (foundation)
-2. [core-interfaces.md](interfaces/core-interfaces.md) (contracts)
-3. [activity-diagram.md](diagram-types/activity-diagram.md) (first diagram type)
-4. [svg-analysis-process.md](processes/svg-analysis-process.md) (how to analyze)
+2. [svg-generation-patterns.md](plantuml/svg-generation-patterns.md) (PlantUML internals - essential)
+3. [core-interfaces.md](interfaces/core-interfaces.md) (contracts)
+4. [activity-diagram.md](diagram-types/activity-diagram.md) (first diagram type)
+5. [svg-analysis-process.md](processes/svg-analysis-process.md) (how to analyze)
 
 **If you're extending**:
 1. [template.md](diagram-types/template.md) (template for new types)
@@ -180,6 +205,7 @@ Layer 2: Diagram Concepts → Visual Representation (Rendering)
 - [x] System Architecture
 - [x] Layer 1 Specification
 - [x] Layer 2 Specification
+- [x] PlantUML SVG Generation Patterns (Research-based)
 - [x] Activity Diagram Specification (Reference Implementation)
 - [x] Process Documentation
 - [x] Interface Definitions
@@ -187,6 +213,7 @@ Layer 2: Diagram Concepts → Visual Representation (Rendering)
 - [ ] Sequence Diagram Specification (Future)
 - [ ] Class Diagram Specification (Future)
 - [ ] State Diagram Specification (Future)
+- [ ] Component Diagram Specification (Future)
 
 ## 🚀 Next Steps
 

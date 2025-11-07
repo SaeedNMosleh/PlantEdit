@@ -20,6 +20,20 @@ Output: Diagram Model (domain concepts)
 - **Editability**: Define what can be modified and how
 - **Testability**: Can test without any rendering
 
+### 1.4 Essential Reading
+
+**PlantUML SVG Generation Patterns**: [../plantuml/svg-generation-patterns.md](../plantuml/svg-generation-patterns.md)
+
+This document is **essential reading** before implementing Layer 1. It contains:
+- Deep analysis of PlantUML's Java source code
+- How PlantUML generates SVG for each diagram type
+- Metadata conventions (`data-*` attributes)
+- Detection strategies for each diagram type
+- Parser implementation guide with code examples
+- Common pitfalls and performance optimizations
+
+**Key Insight**: PlantUML uses semantic metadata in SVG attributes (`data-entity`, `data-entity-uid`, `data-participant`, etc.) that makes parsing much more reliable than purely structural approaches.
+
 ## 2. System Components
 
 ### 2.1 Component Diagram
@@ -440,14 +454,25 @@ export class ActivityDiagramType implements DiagramType {
 
   canHandle(svg: SVGElement): boolean {
     // Activity diagrams have characteristic patterns:
+    // Based on PlantUML source code analysis (see ../plantuml/svg-generation-patterns.md)
+
     // 1. Small ellipses for start/end (rx="11", ry="11")
     const hasStartEnd = svg.querySelector('ellipse[rx="11"][ry="11"]') !== null;
 
     // 2. Rounded rectangles for actions (rx="12.5")
     const hasActions = svg.querySelector('rect[rx="12.5"]') !== null;
 
+    // 3. Diamond shapes for decisions (4-point polygons)
+    const polygons = Array.from(svg.querySelectorAll('polygon'));
+    const hasDiamonds = polygons.some(p => {
+      const points = (p.getAttribute('points') || '').trim().split(/\s+/);
+      return points.length === 4 || points.length === 5;
+    });
+
     // Need at least one of these to be confident
-    return hasStartEnd || hasActions;
+    // Multiple indicators increase confidence
+    const indicators = [hasStartEnd, hasActions, hasDiamonds].filter(Boolean).length;
+    return indicators >= 1;
   }
 
   parse(svg: SVGElement): DiagramModel {
@@ -562,24 +587,100 @@ export class ActivityParser {
       const textElement = parent?.querySelector('text');
       const label = textElement?.textContent?.trim() || '';
 
+      // Get absolute position (accounting for nested transforms)
+      // See ../plantuml/svg-generation-patterns.md for details
+      const position = this.getAbsolutePosition(el);
+
+      // Extract PlantUML metadata if available
+      // PlantUML may add data-* attributes to parent groups
+      const metadata = this.extractMetadata(parent);
+
       nodes.push({
-        id: this.generateId('action', index),
+        id: metadata.uid || this.generateId('action', index),
         type: 'action',
         label: label,
-        position: {
-          x: parseFloat(el.getAttribute('x') || '0'),
-          y: parseFloat(el.getAttribute('y') || '0')
-        },
+        position,
         size: {
           width: parseFloat(el.getAttribute('width') || '0'),
           height: parseFloat(el.getAttribute('height') || '0')
         },
-        data: {},
+        data: {
+          ...metadata,
+          fill: el.getAttribute('fill'),
+          stroke: el.getAttribute('stroke'),
+          strokeWidth: el.getAttribute('stroke-width')
+        },
         svgElement: el
       });
     });
 
     return nodes;
+  }
+
+  /**
+   * Extract absolute position accounting for nested transforms
+   * Based on PlantUML research (see ../plantuml/svg-generation-patterns.md)
+   */
+  private getAbsolutePosition(element: SVGElement): Point {
+    let x = 0, y = 0;
+    let current: Element | null = element;
+
+    // Get element's own position
+    if (element.tagName === 'rect') {
+      x = parseFloat(element.getAttribute('x') || '0');
+      y = parseFloat(element.getAttribute('y') || '0');
+    } else if (element.tagName === 'ellipse' || element.tagName === 'circle') {
+      const cx = parseFloat(element.getAttribute('cx') || '0');
+      const cy = parseFloat(element.getAttribute('cy') || '0');
+      const rx = parseFloat(element.getAttribute('rx') || element.getAttribute('r') || '0');
+      const ry = parseFloat(element.getAttribute('ry') || element.getAttribute('r') || '0');
+      x = cx - rx;
+      y = cy - ry;
+    }
+
+    // Accumulate transforms from parent groups
+    current = element.parentElement;
+    while (current && current.tagName !== 'svg') {
+      const transform = current.getAttribute('transform');
+      if (transform) {
+        const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
+        if (match) {
+          x += parseFloat(match[1]);
+          y += parseFloat(match[2]);
+        }
+      }
+      current = current.parentElement;
+    }
+
+    return { x, y };
+  }
+
+  /**
+   * Extract PlantUML metadata from element or parent group
+   * Based on PlantUML's UGroupType system
+   */
+  private extractMetadata(element: Element | null): Record<string, any> {
+    if (!element) return {};
+
+    const metadata: Record<string, any> = {};
+
+    // PlantUML adds semantic metadata to <g> elements
+    const attributes = ['data-entity', 'data-entity-uid', 'data-qualified-name',
+                       'data-participant', 'data-uid', 'id', 'class'];
+
+    for (const attr of attributes) {
+      const value = element.getAttribute(attr);
+      if (value) {
+        metadata[attr.replace('data-', '')] = value;
+      }
+    }
+
+    // Check parent if no metadata found
+    if (Object.keys(metadata).length === 0 && element.parentElement) {
+      return this.extractMetadata(element.parentElement);
+    }
+
+    return metadata;
   }
 
   private parseDecisionNodes(svg: SVGElement): DiagramNode[] {
@@ -717,7 +818,26 @@ diagramTypeRegistry.setDefault(new GenericDiagramType());
 
 ## 6. Diagram Type Detection
 
-### 6.1 Detector Implementation
+### 6.1 Detection Strategy
+
+**Based on PlantUML Research**: See [../plantuml/svg-generation-patterns.md](../plantuml/svg-generation-patterns.md) for complete detection strategies.
+
+PlantUML provides rich metadata for diagram type detection:
+
+| Diagram Type | Primary Indicators | Metadata Attributes |
+|--------------|-------------------|---------------------|
+| **Activity** | `ellipse[rx="11"]`, `rect[rx="12.5"]`, 4-point polygons | None specific |
+| **Sequence** | `data-participant` attributes, vertical lifelines | `data-participant`, `data-participant-1`, `data-participant-2` |
+| **Class** | `class="entity"`, horizontal separators in rectangles | `data-entity`, `data-qualified-name`, `data-entity-uid` |
+| **State** | Rounded rectangles with separators, bull's eye circles | ID patterns like `state_*` |
+| **Component** | Component tabs, lollipop interfaces | `data-entity`, Symbol-based shapes |
+
+**Detection Priority**:
+1. **Metadata attributes** (most reliable) - Check for `data-*` attributes
+2. **Structural patterns** (reliable) - Check for characteristic shapes
+3. **ID patterns** (somewhat reliable) - Check for naming conventions
+
+### 6.2 Detector Implementation
 
 ```typescript
 // detection/DiagramTypeDetector.ts
@@ -727,9 +847,23 @@ export class DiagramTypeDetector {
 
   /**
    * Detect which diagram type can handle the given SVG
+   * Priority order matters: most specific first
    */
   detect(svg: SVGElement): DiagramType | null {
-    // Try each registered type
+    // Priority 1: Check metadata-based detection (most reliable)
+    // Sequence diagrams have unique data-participant attributes
+    if (svg.querySelector('g[data-participant]')) {
+      const type = this.registry.get('sequence');
+      if (type && type.canHandle(svg)) return type;
+    }
+
+    // Class diagrams have data-qualified-name attributes
+    if (svg.querySelector('g[data-qualified-name]')) {
+      const type = this.registry.get('class');
+      if (type && type.canHandle(svg)) return type;
+    }
+
+    // Priority 2: Try each registered type
     for (const type of this.registry.getAll()) {
       if (type.canHandle(svg)) {
         return type;
@@ -748,8 +882,33 @@ export class DiagramTypeDetector {
     type: DiagramType;
     confidence: number;
   }> {
-    // Implementation that returns confidence scores
-    // Could be enhanced to provide more detailed detection
+    const results = [];
+
+    for (const type of this.registry.getAll()) {
+      const confidence = this.calculateConfidence(svg, type);
+      if (confidence > 0) {
+        results.push({ type, confidence });
+      }
+    }
+
+    // Sort by confidence (descending)
+    return results.sort((a, b) => b.confidence - a.confidence);
+  }
+
+  /**
+   * Calculate confidence score (0-100)
+   * Based on multiple indicators
+   */
+  private calculateConfidence(svg: SVGElement, type: DiagramType): number {
+    // Implementation varies by type
+    // Could check:
+    // - Number of matching metadata attributes (weight: 40)
+    // - Number of matching structural patterns (weight: 30)
+    // - Number of matching ID patterns (weight: 20)
+    // - Absence of conflicting patterns (weight: 10)
+
+    // For now, return 100 if canHandle returns true
+    return type.canHandle(svg) ? 100 : 0;
   }
 }
 ```
