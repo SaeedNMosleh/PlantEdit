@@ -5,20 +5,21 @@
 import React, { useState } from 'react';
 import { plantUMLClient } from '@/services/SimplePlantUMLClient';
 import { CorrectPlantUMLEditor } from '@/components/CorrectPlantUMLEditor';
-import ReactFlowEditor from '@/components/ReactFlowEditor';
 import './App.css';
 
 const App: React.FC = () => {
   const [plantumlSource, setPlantumlSource] = useState(`@startuml
-start
-:Read Input;
-if (Valid?) then (yes)
-  :Process;
-else (no)
-  :Show Error;
-endif
-:Done;
-stop
+left to right direction
+skinparam linetype ortho
+rectangle "Login\\nScenario" as login
+rectangle "Dashboard\\nScenario" as dash
+rectangle "Create Item\\nScenario" as create
+rectangle "Validation\\nTest" as valid
+rectangle "Database\\nTest" as db
+login --> dash
+dash --> create
+create --> valid
+create --> db
 @enduml`);
 
   const [svgContent, setSvgContent] = useState<string>('');
@@ -26,7 +27,6 @@ stop
   const [error, setError] = useState<string>('');
   const [isInputCollapsed, setIsInputCollapsed] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [useReactFlow, setUseReactFlow] = useState(true); // Toggle between editors
 
   const handleGenerate = async () => {
     if (!plantumlSource.trim()) return;
@@ -253,97 +253,62 @@ login --> dash
         {/* Editor Area */}
         <div className="flex-1 flex flex-col">
           {/* Toolbar */}
-          <div className="bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 flex items-center justify-between shadow-sm">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleExportSVG}
-                disabled={!svgContent}
-                className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  svgContent
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 hover:scale-105 shadow-md hover:shadow-lg'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7,10 12,15 17,10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span>Export SVG</span>
-                </div>
-              </button>
-              <button
-                onClick={handleExportPNG}
-                disabled={!svgContent}
-                className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  svgContent
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 hover:scale-105 shadow-md hover:shadow-lg'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21,15 16,10 5,21"/>
-                  </svg>
-                  <span>Export PNG</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Editor Toggle */}
-            <div className="flex items-center space-x-3">
-              <span className="text-xs font-medium text-slate-600">Editor:</span>
-              <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
-                <button
-                  onClick={() => setUseReactFlow(false)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
-                    !useReactFlow
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  D3 (Classic)
-                </button>
-                <button
-                  onClick={() => setUseReactFlow(true)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
-                    useReactFlow
-                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  React Flow (PoC) ✨
-                </button>
+          <div className="bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 flex items-center space-x-2 shadow-sm">
+            <button
+              onClick={handleExportSVG}
+              disabled={!svgContent}
+              className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                svgContent
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 hover:scale-105 shadow-md hover:shadow-lg'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7,10 12,15 17,10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Export SVG</span>
               </div>
-            </div>
+            </button>
+            <button
+              onClick={handleExportPNG}
+              disabled={!svgContent}
+              className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                svgContent
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 hover:scale-105 shadow-md hover:shadow-lg'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21,15 16,10 5,21"/>
+                </svg>
+                <span>Export PNG</span>
+              </div>
+            </button>
           </div>
 
           {/* Canvas */}
           <div className="flex-1 bg-gradient-to-br from-white via-slate-50 to-blue-50 relative overflow-hidden">
-            {/* Grid pattern background - only show for D3 editor */}
-            {!useReactFlow && (
-              <div
-                className="absolute inset-0 opacity-30"
-                style={{
-                  backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
-                  backgroundSize: '24px 24px'
-                }}
-              />
-            )}
+            {/* Grid pattern background */}
+            <div
+              className="absolute inset-0 opacity-30"
+              style={{
+                backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
+                backgroundSize: '24px 24px'
+              }}
+            />
 
             {svgContent ? (
-              useReactFlow ? (
-                <ReactFlowEditor svgContent={svgContent} />
-              ) : (
-                <CorrectPlantUMLEditor
-                  svgContent={svgContent}
-                  onSVGUpdate={handleSVGUpdate}
-                  onZoomChange={handleZoomChange}
-                />
-              )
+              <CorrectPlantUMLEditor
+                svgContent={svgContent}
+                onSVGUpdate={handleSVGUpdate}
+                onZoomChange={handleZoomChange}
+              />
             ) : (
               <div className="h-full flex items-center justify-center relative z-10">
                 <div className="text-center max-w-md mx-auto p-8">
@@ -383,22 +348,16 @@ login --> dash
           <div className="flex items-center space-x-3">
             <div className={`w-2 h-2 rounded-full ${svgContent ? 'bg-green-500' : 'bg-slate-300'} animate-pulse`}></div>
             <span className="text-sm font-medium text-slate-600">
-              {svgContent
-                ? useReactFlow
-                  ? 'React Flow editor active (PoC) - drag nodes to rearrange, scroll to zoom, extensible architecture'
-                  : 'D3 editor active - drag entities to rearrange, mouse wheel to zoom, click background to pan'
-                : 'Ready to generate diagram'}
+              {svgContent ? 'PlantUML editor active - drag entities to rearrange, mouse wheel to zoom, click background to pan' : 'Ready to generate diagram'}
             </span>
           </div>
           {svgContent && (
             <div className="flex items-center space-x-2">
-              {!useReactFlow && (
-                <div className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
-                  Zoom: {Math.round(zoomLevel * 100)}%
-                </div>
-              )}
               <div className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
-                {useReactFlow ? 'React Flow Mode' : 'D3 Mode'}
+                Zoom: {Math.round(zoomLevel * 100)}%
+              </div>
+              <div className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+                Interactive Mode
               </div>
             </div>
           )}
